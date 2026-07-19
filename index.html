@@ -1062,6 +1062,13 @@ function initMap(){
     attribution:'&copy; OpenStreetMap contributors &copy; CARTO'
   }).addTo(map);
 
+  // Dedicated pane so aircraft always render above airports, regardless of add order —
+  // Leaflet's default marker pane (z=600) is shared by every L.marker, and LayerGroup
+  // itself has no bringToFront(); panes are the correct way to guarantee stacking
+  // across a mix of circleMarkers and icon markers like ours.
+  map.createPane('aircraftPane');
+  map.getPane('aircraftPane').style.zIndex = 650;
+
   // Leaflet caches its container's pixel size at init time and won't notice if that
   // size changes later (web fonts finishing, layout settling, orientation change,
   // grid breakpoint switching) — which shows up as the map being clipped/cut off.
@@ -1086,13 +1093,10 @@ function initMap(){
     if(selectedHex) closeDetail();
   });
 
-  // reload traffic for whatever's now in view, debounced so panning/zooming
-  // doesn't hammer the API (which is rate-limited to 1 req/sec)
-  let moveTimer;
+  // Re-filters the local airport dataset for whatever's now in view — no network
+  // call involved, so this is free to run on every pan/zoom.
   map.on('moveend', ()=>{
-    renderAirports(); // cheap, local — fine to run immediately on every move
-    clearTimeout(moveTimer);
-    moveTimer = setTimeout(poll, 600);
+    renderAirports();
   });
 
   map.setView([CENTER.lat, CENTER.lon], 13);
@@ -1136,7 +1140,7 @@ function renderMap(){
     const t = trails.get(a.hex);
     if(t && t.points.length > 1){
       L.polyline(t.points, {
-        color: fill, weight:1.2, opacity: dimmed ? 0.12 : 0.4, interactive:false
+        color: fill, weight:1.2, opacity: dimmed ? 0.12 : 0.4, interactive:false, pane:'aircraftPane'
       }).addTo(aircraftLayer);
     }
 
@@ -1154,7 +1158,7 @@ function renderMap(){
         html: `<span class="${iconClass}" style="${iconColorStyle}font-size:${isSel?26:20}px;opacity:${dimmed?0.35:1};">${glyph}</span>`,
         iconSize: [28,28], iconAnchor: [14,14]
       });
-      aircraftLayer.addLayer(L.marker([a.lat,a.lon], {icon, interactive:false}));
+      aircraftLayer.addLayer(L.marker([a.lat,a.lon], {icon, interactive:false, pane:'aircraftPane'}));
     } else {
       const marker = L.circleMarker([a.lat,a.lon], {
         radius: isSel?8:5,
@@ -1163,7 +1167,8 @@ function renderMap(){
         fillColor: fill,
         fillOpacity: dimmed ? 0.3 : 0.9,
         opacity: dimmed ? 0.3 : 1,
-        interactive: false // purely visual — the larger hit target below handles taps
+        interactive: false, // purely visual — the larger hit target below handles taps
+        pane: 'aircraftPane'
       });
       aircraftLayer.addLayer(marker);
     }
@@ -1176,7 +1181,8 @@ function renderMap(){
       radius: 16,
       stroke: false,
       fillOpacity: 0.01,
-      bubblingMouseEvents: false
+      bubblingMouseEvents: false,
+      pane: 'aircraftPane'
     });
     hitTarget.bindTooltip(a.flight?a.flight.trim():(a.r||a.hex), {direction:'top', opacity:0.9});
     hitTarget.on('click', ()=> selectAircraft(a.hex));
@@ -1191,7 +1197,8 @@ function renderMap(){
         color: isSel ? '#eafff0' : fill,
         weight: isSel ? 2 : 1.3,
         opacity: dimmed ? 0.25 : 0.75,
-        interactive:false
+        interactive:false,
+        pane:'aircraftPane'
       });
       aircraftLayer.addLayer(vector);
     }
@@ -1202,14 +1209,12 @@ function renderMap(){
       const altMarker = L.marker([a.lat,a.lon], {
         icon: L.divIcon({className:'alt-label', html:altText, iconSize:[30,14], iconAnchor:[-8,7]}),
         interactive:false,
-        opacity: dimmed ? 0.35 : 1
+        opacity: dimmed ? 0.35 : 1,
+        pane: 'aircraftPane'
       });
       aircraftLayer.addLayer(altMarker);
     }
   });
-
-  // Aircraft take tap priority over airports when they overlap on screen.
-  aircraftLayer.bringToFront();
 }
 
 let collectionMakeFilter = '';
