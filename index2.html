@@ -2082,8 +2082,8 @@ let hardModeGateHex = null; // hex of the aircraft currently shown in the aim ga
 const hardModeAimedHexes = new Set(); // hexes already verified this session — don't re-gate on reopen
 const hardModePhotos = new Map(); // hex -> data URL, captured this session only (not persisted to storage)
 
-const AIM_AZ_TOLERANCE = 20; // degrees
-const AIM_EL_TOLERANCE = 15; // degrees — more generous since beta-derived elevation is rougher
+const AIM_AZ_TOLERANCE = 10; // degrees
+const AIM_EL_TOLERANCE = 10; // degrees
 
 function deviceElevation(){
   if(deviceTilt === null) return null;
