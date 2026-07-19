@@ -61,6 +61,17 @@
     margin-top:12px;
   }
   .tabs .icon-btn{margin-left:auto;}
+  .app-brand{
+    font-family:'Barlow Condensed',sans-serif;
+    text-transform:uppercase;
+    letter-spacing:.05em;
+    font-weight:700;
+    font-size:20px;
+    color:#eafff0;
+    display:flex;
+    align-items:center;
+    padding:7px 14px 7px 0;
+  }
   .tab{
     font-family:'Barlow Condensed',sans-serif;
     text-transform:uppercase;
@@ -70,7 +81,6 @@
     padding:7px 14px;
     background:transparent;
     border:1px solid var(--hair);
-    border-bottom:none;
     color:var(--muted);
     cursor:pointer;
   }
@@ -193,6 +203,14 @@
     border:1px solid var(--grid);
     padding:10px;
   }
+  .feed-warning{
+    color:var(--magenta);
+    font-size:11px;
+    padding:6px 8px;
+    margin-bottom:8px;
+    border:1px solid var(--magenta);
+    background:rgba(255,111,165,0.08);
+  }
   .section-heading{
     font-family:'Barlow Condensed',sans-serif;
     text-transform:uppercase;
@@ -206,7 +224,7 @@
   }
   .scope-status{font-size:11px;color:var(--muted);margin-bottom:8px;}
   .scope-status b{color:var(--phosphor);}
-  #scope{height:420px;width:100%;background:var(--scope);}
+  #scope{width:100%;aspect-ratio:1/1;background:var(--scope);}
   .leaflet-container{background:var(--scope);font-family:'Space Mono',monospace;}
   .leaflet-control-attribution{background:rgba(9,15,12,0.7) !important;color:var(--muted) !important;font-size:9px !important;}
   .leaflet-control-attribution a{color:var(--muted) !important;}
@@ -428,7 +446,8 @@
 
 <header>
   <div class="tabs">
-    <button class="tab active" data-tab="live">Live Scope</button>
+    <span class="app-brand">AeroDex</span>
+    <button class="tab active" data-tab="live">Scope</button>
     <button class="tab" data-tab="log">My Collection</button>
     <button id="geoBtn" class="geo-btn icon-btn" title="Use my location" aria-label="Use my location"><i class="ph">&#xEDD8;</i></button>
   </div>
@@ -450,7 +469,7 @@
     </div>
 
     <div class="scope-wrap">
-      <div class="scope-status">Near: <b id="acCount">0</b> / Shown: <b id="acShown">0</b></div>
+      <div id="feedWarning" class="feed-warning" style="display:none;"></div>
       <div id="scope"></div>
     </div>
 
@@ -750,6 +769,7 @@ function destPoint(lat, lon, bearingDeg, distNM){
 }
 
 let pollSeq = 0;
+let consecutivePollFailures = 0;
 const trails = new Map(); // hex -> {points:[[lat,lon],...], lastUpdate}
 const TRAIL_MAX_POINTS = 300; // ~10 min of history at 2s polling
 const TRAIL_TTL_MS = 10*60*1000; // drop trails for aircraft not seen in 10 min
@@ -784,6 +804,7 @@ async function poll(){
     radius = Math.min(Math.max(radius, MIN_FETCH_RADIUS_NM), MAX_FETCH_RADIUS_NM);
 
     const res = await fetch(`https://api.airplanes.live/v2/point/${center.lat}/${center.lng}/${radius}`);
+    if(!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     if(seq !== pollSeq) return; // a newer poll already landed; discard this stale response
 
@@ -799,13 +820,25 @@ async function poll(){
 
     currentAircraft = ac;
     updateTrails(ac);
-    document.getElementById('acCount').textContent = ac.length;
+    const acCountEl = document.getElementById('acCount');
+    if(acCountEl) acCountEl.textContent = ac.length;
     updateFilterCounts();
 
     renderTable();
     renderMap();
+    consecutivePollFailures = 0;
+    const warnEl = document.getElementById('feedWarning');
+    if(warnEl) warnEl.style.display = 'none';
   }catch(e){
+    consecutivePollFailures++;
     console.error('poll failed:', e);
+    const warnEl = document.getElementById('feedWarning');
+    if(warnEl){
+      warnEl.style.display = 'block';
+      warnEl.textContent = consecutivePollFailures > 1
+        ? `⚠ Live feed unavailable (${consecutivePollFailures} failed attempts) — still retrying…`
+        : `⚠ Live feed unavailable — airplanes.live may be rate-limiting or unreachable. Retrying…`;
+    }
   }
 }
 
@@ -831,7 +864,8 @@ function updateFilterCounts(){
 
 function renderTable(){
   const list = visibleList();
-  document.getElementById('acShown').textContent = list.length;
+  const acShownEl = document.getElementById('acShown');
+  if(acShownEl) acShownEl.textContent = list.length;
 }
 
 let revealedHexes = new Set();
