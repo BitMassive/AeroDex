@@ -60,7 +60,7 @@
     flex-wrap:wrap;
     gap:2px;
   }
-  .tabs .icon-btn{margin-left:auto;}
+  .btn-pair{display:flex;gap:4px;}
   .app-brand{
     font-family:'Barlow Condensed',sans-serif;
     text-transform:uppercase;
@@ -206,20 +206,66 @@
     box-shadow:0 0 12px rgba(255,85,51,0.35);
   }
   .aim-gate{border:1px solid var(--hardmode);padding:12px;margin-top:10px;}
-  .aim-gate-title{
-    display:flex;align-items:center;gap:6px;
-    color:var(--hardmode);font-family:'Barlow Condensed',sans-serif;
-    text-transform:uppercase;letter-spacing:.04em;font-weight:700;font-size:13px;margin-bottom:8px;
+  .aim-viewfinder-wrap{
+    position:relative;width:100%;height:220px;overflow:hidden;
+    margin-bottom:10px;background:#000;border:1px solid var(--hardmode);
   }
+  .aim-viewfinder{width:100%;height:100%;object-fit:cover;display:block;}
+  .aim-reticle{
+    position:absolute;top:50%;left:50%;width:44px;height:44px;
+    transform:translate(-50%,-50%);
+    border:2px solid rgba(255,255,255,0.55);border-radius:50%;
+    pointer-events:none;
+  }
+  .aim-reticle::before, .aim-reticle::after{
+    content:'';position:absolute;background:rgba(255,255,255,0.55);
+  }
+  .aim-reticle::before{top:50%;left:-10px;right:-10px;height:1px;transform:translateY(-50%);}
+  .aim-reticle::after{left:50%;top:-10px;bottom:-10px;width:1px;transform:translateX(-50%);}
+  .aim-overlay-top{
+    position:absolute;top:0;left:0;right:0;padding:8px 10px;
+    background:linear-gradient(to bottom, rgba(0,0,0,0.75), transparent);
+    color:var(--hardmode);font-family:'Barlow Condensed',sans-serif;
+    text-transform:uppercase;letter-spacing:.04em;font-weight:700;font-size:13px;
+    display:flex;align-items:center;gap:6px;
+  }
+  .aim-overlay-bottom{
+    position:absolute;bottom:0;left:0;right:0;padding:8px;
+    background:linear-gradient(to top, rgba(0,0,0,0.85), transparent);
+  }
+  .aim-overlay-bottom .aim-readout{margin-bottom:6px;}
+  .aim-overlay-bottom .aim-readout div{background:rgba(0,0,0,0.55);border-color:rgba(255,255,255,0.2);}
+  .aim-overlay-bottom .aim-status{margin-bottom:0;}
   .aim-readout{display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:11px;margin-bottom:10px;}
   .aim-readout div{background:var(--bg);border:1px solid var(--grid);padding:6px 8px;}
   .aim-readout .aim-label{color:var(--muted);display:block;font-size:9px;text-transform:uppercase;margin-bottom:2px;}
   .aim-readout .aim-value{font-family:'Space Mono',monospace;font-size:14px;}
   .aim-status{font-size:11px;margin-bottom:10px;padding:6px 8px;text-align:center;border:1px solid var(--grid);}
-  .aim-status.aligned{color:var(--phosphor);border-color:var(--phosphor);background:rgba(143,227,166,0.08);}
+  .aim-status.aligned{
+    color:#04140a;
+    background:var(--phosphor);
+    border-color:var(--phosphor);
+    font-weight:700;
+    font-size:13px;
+    padding:10px 8px;
+    text-transform:uppercase;
+    letter-spacing:.03em;
+  }
   .aim-status.unaligned{color:var(--amber);}
-  .aim-identify-btn{width:100%;}
+  .aim-identify-btn{width:100%;font-size:13px;transition:all 0.15s;}
   .aim-identify-btn:disabled{opacity:0.35;cursor:not-allowed;}
+  .aim-identify-btn:not(:disabled){
+    background:var(--phosphor);
+    color:#04140a;
+    border-color:var(--phosphor);
+    font-weight:700;
+    animation:aim-ready-pulse 1.1s ease-in-out infinite;
+  }
+  @keyframes aim-ready-pulse{
+    0%,100%{box-shadow:0 0 8px rgba(143,227,166,0.5);}
+    50%{box-shadow:0 0 20px rgba(143,227,166,0.95);}
+  }
+  .aim-captured-photo{width:100%;max-height:160px;object-fit:cover;border:1px solid var(--grid);display:block;margin-bottom:10px;}
   .aim-skip{display:block;text-align:center;font-size:10px;color:var(--muted);margin-top:8px;text-decoration:underline;cursor:pointer;}
   .feed-warning{
     color:var(--magenta);
@@ -503,8 +549,10 @@
   <div class="tabs">
     <span class="app-brand">AeroDex</span>
     <span class="geo-accuracy" id="geoAccuracy"></span>
-    <button id="hardModeBtn" class="geo-btn icon-btn" title="Hard Mode — point your phone at the aircraft to identify it" aria-label="Toggle Hard Mode"><i class="ph">&#xEA64;</i></button>
-    <button id="geoBtn" class="geo-btn icon-btn" title="Use my location" aria-label="Use my location"><i class="ph">&#xEDD8;</i></button>
+    <div class="btn-pair">
+      <button id="hardModeBtn" class="geo-btn icon-btn" title="Hard Mode — point your phone at the aircraft to identify it" aria-label="Toggle Hard Mode"><i class="ph">&#xEA64;</i></button>
+      <button id="geoBtn" class="geo-btn icon-btn" title="Use my location" aria-label="Use my location"><i class="ph">&#xEDD8;</i></button>
+    </div>
   </div>
 </header>
 
@@ -988,9 +1036,11 @@ function startQuiz(hex){
   if(!a) return;
   const options = buildQuizOptions(a.t);
   if(!options){
-    // no dictionary entry for this type code — nothing to grade, but it still counts as collected
+    // Type code not in our 388-entry database (or airplanes.live didn't report one at all) —
+    // nothing to grade, but it still counts as a genuine catch.
     revealedHexes.add(hex);
-    collectAircraft(a, null).then(()=>{ renderTable(); renderMap(); });
+    quizStates.set(hex, {options:null, chosen:null, score:null, noData:true});
+    collectAircraft(a, null).then(()=>{ renderTable(); renderMap(); renderLog(); });
     showDetail(hex);
     renderTable();
     return;
@@ -1181,6 +1231,11 @@ function showDetail(hex){
       quizEl.innerHTML = `<div class="quiz-result ${cls}">${headline}<br>You guessed <b>${state.chosen}</b> — it's actually a <b>${model}</b>.</div>
         <div class="photo-compare-loading" id="photoCompare">Loading photos…</div>`;
       renderPhotoCompare(hex, a, model, state);
+    } else if(state && state.noData){
+      quizEl.innerHTML = `<div class="quiz-result" style="color:var(--muted);border-color:var(--grid);">
+        ${a.t ? `Type <b>${a.t}</b> isn't in the aircraft database yet` : 'No type code reported for this aircraft'} —
+        logged as a catch, but there's nothing to quiz you on.
+      </div>`;
     } else {
       quizEl.innerHTML = '';
     }
@@ -1188,7 +1243,9 @@ function showDetail(hex){
     if(hardModeActive && !hardModeAimedHexes.has(hex)){
       renderAimGate(hex, a);
     } else {
-      quizEl.innerHTML = `<div class="quiz-prompt">What is it?</div>` +
+      const capturedPhoto = hardModePhotos.get(hex);
+      const photoHtml = capturedPhoto ? `<img class="aim-captured-photo" src="${capturedPhoto}" alt="Your photo of this aircraft">` : '';
+      quizEl.innerHTML = photoHtml + `<div class="quiz-prompt">What is it?</div>` +
         state.options.map(opt => `<button class="quiz-opt" data-choice="${opt.display.replace(/"/g,'&quot;')}" data-make="${opt.make.replace(/"/g,'&quot;')}">${opt.display}</button>`).join('');
       quizEl.querySelectorAll('.quiz-opt').forEach(btn=>{
         btn.addEventListener('click', ()=> submitGuess(hex, btn.dataset.choice, btn.dataset.make));
@@ -1284,6 +1341,7 @@ function initMap(){
 function closeDetail(){
   selectedHex = null;
   hardModeGateHex = null;
+  stopAimCamera();
   document.getElementById('detail').classList.remove('show');
   document.getElementById('detailBackdrop').classList.remove('show');
   renderTable();
@@ -1831,6 +1889,7 @@ let deviceHeading = null; // compass heading, degrees, 0=N clockwise
 let deviceTilt = null;    // beta: front-back tilt, ~90=vertical/facing horizon, ~0=flat/facing sky
 let hardModeGateHex = null; // hex of the aircraft currently shown in the aim gate, for live updates
 const hardModeAimedHexes = new Set(); // hexes already verified this session — don't re-gate on reopen
+const hardModePhotos = new Map(); // hex -> data URL, captured this session only (not persisted to storage)
 
 const AIM_AZ_TOLERANCE = 20; // degrees
 const AIM_EL_TOLERANCE = 15; // degrees — more generous since beta-derived elevation is rougher
@@ -1915,32 +1974,94 @@ function updateAimGate(){
   statusEl.className = 'aim-status unaligned';
 }
 
-function renderAimGate(hex, a){
+let hardModeStream = null;
+
+async function startAimCamera(videoEl){
+  try{
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: {facingMode: {ideal:'environment'}},
+      audio: false
+    });
+    hardModeStream = stream;
+    videoEl.srcObject = stream;
+    await videoEl.play();
+    return true;
+  }catch(e){
+    console.error('Live camera unavailable, falling back to native camera capture:', e);
+    return false;
+  }
+}
+
+function stopAimCamera(){
+  if(hardModeStream){
+    hardModeStream.getTracks().forEach(t=>t.stop());
+    hardModeStream = null;
+  }
+}
+
+function capturePhotoFromVideo(videoEl){
+  const canvas = document.createElement('canvas');
+  canvas.width = videoEl.videoWidth || 640;
+  canvas.height = videoEl.videoHeight || 480;
+  canvas.getContext('2d').drawImage(videoEl, 0, 0, canvas.width, canvas.height);
+  return canvas.toDataURL('image/jpeg', 0.85);
+}
+
+async function renderAimGate(hex, a){
+  stopAimCamera(); // guard against a leftover stream if this gets re-rendered
   hardModeGateHex = hex;
   const quizEl = document.getElementById('quizArea');
   const target = computeTargetAim(a);
   quizEl.innerHTML = `
     <div class="aim-gate" id="aimGate">
-      <div class="aim-gate-title"><i class="ph">&#xEA64;</i> Hard Mode — point your phone at it</div>
-      <div class="aim-readout">
-        <div><span class="aim-label">Target bearing</span><span class="aim-value">${Math.round(target.bearing)}°</span></div>
-        <div><span class="aim-label">Target elevation</span><span class="aim-value">${Math.round(target.elevation)}°</span></div>
+      <div class="aim-viewfinder-wrap">
+        <video id="aimVideo" class="aim-viewfinder" autoplay muted playsinline></video>
+        <div class="aim-reticle"></div>
+        <div class="aim-overlay-top"><i class="ph">&#xEA64;</i> Point your phone at it</div>
+        <div class="aim-overlay-bottom">
+          <div class="aim-readout">
+            <div><span class="aim-label">Target bearing</span><span class="aim-value">${Math.round(target.bearing)}°</span></div>
+            <div><span class="aim-label">Target elevation</span><span class="aim-value">${Math.round(target.elevation)}°</span></div>
+          </div>
+          <div class="aim-status unaligned" id="aimStatus">Requesting compass…</div>
+        </div>
       </div>
-      <div class="aim-status unaligned" id="aimStatus">Requesting compass…</div>
       <button class="geo-btn aim-identify-btn" id="aimIdentifyBtn" disabled><i class="ph">&#xE10E;</i> Take Photo &amp; Identify</button>
     </div>`;
   updateAimGate();
+
+  const videoEl = document.getElementById('aimVideo');
+  const cameraOk = await startAimCamera(videoEl);
+  if(hardModeGateHex !== hex) { stopAimCamera(); return; } // gate moved on while camera was still starting up
+  if(!cameraOk) videoEl.style.display = 'none'; // no live feed, but alignment still works fine without it
+
   document.getElementById('aimIdentifyBtn').addEventListener('click', ()=>{
+    if(cameraOk){
+      hardModePhotos.set(hex, capturePhotoFromVideo(videoEl));
+      stopAimCamera();
+      proceedPastAimGate(hex);
+      return;
+    }
+    // Fallback: no live viewfinder available, so hand off to the OS camera app instead.
     const fileInput = document.getElementById('aimPhotoInput');
     fileInput.onchange = ()=>{
+      const file = fileInput.files[0];
       fileInput.value = '';
-      proceedPastAimGate(hex); // proceed either way — alignment was already verified, the photo's a bonus, not a second gate
+      if(file){
+        const reader = new FileReader();
+        reader.onload = ()=>{ hardModePhotos.set(hex, reader.result); proceedPastAimGate(hex); };
+        reader.onerror = ()=> proceedPastAimGate(hex);
+        reader.readAsDataURL(file);
+      } else {
+        proceedPastAimGate(hex); // camera cancelled — still proceed, alignment was already verified
+      }
     };
     fileInput.click();
   });
 }
 
 function proceedPastAimGate(hex){
+  stopAimCamera();
   hardModeAimedHexes.add(hex);
   hardModeGateHex = null;
   showDetail(hex);
@@ -1966,13 +2087,41 @@ document.getElementById('hardModeBtn').addEventListener('click', async ()=>{
     hardModeActive = true;
     btn.classList.add('on');
     document.querySelector('.scope-wrap').classList.add('hard-mode-active');
+    refreshHardModeLocation();
   } else {
     stopOrientationListening();
+    stopAimCamera();
     hardModeActive = false;
     deviceHeading = null;
     deviceTilt = null;
     btn.classList.remove('on');
     document.querySelector('.scope-wrap').classList.remove('hard-mode-active');
+  }
+});
+
+// One-shot location fix (not continuous tracking like the GPS button) — called once when
+// Hard Mode is turned on, and again every time the tab/screen becomes visible again. If
+// you're walking around with the phone locked, this re-centers the map on you the moment
+// you unlock and look at it, without needing continuous watchPosition running the whole time.
+function refreshHardModeLocation(){
+  if(!navigator.geolocation) return;
+  navigator.geolocation.getCurrentPosition(pos=>{
+    CENTER.lat = pos.coords.latitude;
+    CENTER.lon = pos.coords.longitude;
+    updateCenterVisuals();
+    renderTable();
+    renderMap();
+    if(map) map.setView([CENTER.lat, CENTER.lon], map.getZoom());
+    const acc = pos.coords.accuracy ? Math.round(pos.coords.accuracy) : null;
+    document.getElementById('geoAccuracy').textContent = acc ? `±${acc}m` : '';
+  }, err=>{
+    console.error('Hard Mode location fix failed:', err);
+  }, {enableHighAccuracy:true, maximumAge:5000, timeout:15000});
+}
+
+document.addEventListener('visibilitychange', ()=>{
+  if(hardModeActive && document.visibilityState === 'visible'){
+    refreshHardModeLocation();
   }
 });
 
