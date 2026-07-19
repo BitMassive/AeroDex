@@ -414,6 +414,11 @@
     box-shadow:0 12px 48px rgba(0,0,0,0.65);
   }
   .detail.show{display:block;}
+  .detail.camera-active{
+    width:min(560px, 96vw);
+    max-height:94vh;
+  }
+  .detail.camera-active .aim-viewfinder-wrap{height:min(60vh, 480px);}
   .detail-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:8px;}
   .detail-head-title{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
   .detail-photo{width:100%;height:140px;object-fit:cover;border:1px solid var(--grid);background:var(--bg);display:block;margin-bottom:12px;}
@@ -931,6 +936,7 @@ async function poll(){
 
     renderTable();
     renderMap();
+    if(hardModeGateHex) updateAimGate(); // target moves even when the phone doesn't — refresh on new data, not just new orientation
     consecutivePollFailures = 0;
     const warnEl = document.getElementById('feedWarning');
     if(warnEl) warnEl.style.display = 'none';
@@ -1997,6 +2003,8 @@ function stopAimCamera(){
     hardModeStream.getTracks().forEach(t=>t.stop());
     hardModeStream = null;
   }
+  const detailEl = document.getElementById('detail');
+  if(detailEl) detailEl.classList.remove('camera-active');
 }
 
 function capturePhotoFromVideo(videoEl){
@@ -2033,7 +2041,11 @@ async function renderAimGate(hex, a){
   const videoEl = document.getElementById('aimVideo');
   const cameraOk = await startAimCamera(videoEl);
   if(hardModeGateHex !== hex) { stopAimCamera(); return; } // gate moved on while camera was still starting up
-  if(!cameraOk) videoEl.style.display = 'none'; // no live feed, but alignment still works fine without it
+  if(cameraOk){
+    document.getElementById('detail').classList.add('camera-active');
+  } else {
+    videoEl.style.display = 'none'; // no live feed, but alignment still works fine without it
+  }
 
   document.getElementById('aimIdentifyBtn').addEventListener('click', ()=>{
     if(cameraOk){
@@ -2113,7 +2125,8 @@ function refreshHardModeLocation(){
     renderMap();
     if(map) map.setView([CENTER.lat, CENTER.lon], map.getZoom());
     const acc = pos.coords.accuracy ? Math.round(pos.coords.accuracy) : null;
-    document.getElementById('geoAccuracy').textContent = acc ? `±${acc}m` : '';
+    const stamp = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+    document.getElementById('geoAccuracy').textContent = acc ? `±${acc}m · ${stamp}` : stamp;
   }, err=>{
     console.error('Hard Mode location fix failed:', err);
   }, {enableHighAccuracy:true, maximumAge:5000, timeout:15000});
@@ -2144,7 +2157,7 @@ function startGeoTracking(){
     renderTable(); // distance/bearing columns are relative to CENTER
     renderMap();
     const acc = pos.coords.accuracy ? Math.round(pos.coords.accuracy) : null;
-    document.getElementById('geoAccuracy').textContent = acc ? `±${acc}m` : '';
+    document.getElementById('geoAccuracy').textContent = acc ? `±${acc}m · LIVE` : 'LIVE';
     btn.title = 'Tracking — tap to stop';
     if(firstFix){
       map.setView([CENTER.lat, CENTER.lon], map.getZoom());
