@@ -35,7 +35,7 @@
     overflow-x:hidden;
   }
   header{
-    padding:18px 20px 10px;
+    padding:10px 20px 10px;
     border-bottom:1px solid var(--hair);
   }
   h1{
@@ -58,7 +58,6 @@
     display:flex;
     flex-wrap:wrap;
     gap:2px;
-    margin-top:12px;
   }
   .tabs .icon-btn{margin-left:auto;}
   .app-brand{
@@ -71,6 +70,13 @@
     display:flex;
     align-items:center;
     padding:7px 14px 7px 0;
+  }
+  .geo-accuracy{
+    margin-left:auto;
+    font-family:'Space Mono',monospace;
+    font-size:11px;
+    color:var(--amber);
+    align-self:center;
   }
   .tab{
     font-family:'Barlow Condensed',sans-serif;
@@ -166,17 +172,6 @@
     cursor:pointer;
   }
   .rarity-count-col.active{background:var(--phosphor-dim);border-color:var(--phosphor);}
-  .rarity-count-col.active,
-  .rarity-count-col.active i,
-  .rarity-count-col.active b{
-    color:#000 !important;
-    -webkit-text-fill-color:#000 !important;
-    background:none !important;
-    -webkit-background-clip:initial !important;
-    background-clip:initial !important;
-    animation:none !important;
-  }
-  .rarity-count-col.active .rarity-count-dot{background:#000 !important;}
   .rarity-count-col i{font-style:normal;font-size:24px;line-height:1;}
   .rarity-count-dot{width:14px;height:14px;border-radius:50%;background:var(--muted);display:inline-block;}
   .filter-checks{display:flex;flex-wrap:nowrap;gap:6px;align-items:center;justify-content:space-between;width:100%;}
@@ -273,9 +268,9 @@
     word-break:break-word;
     overflow-wrap:break-word;
   }
-  table.collection-table th:nth-child(1), table.collection-table td:nth-child(1){width:12%;}
+  table.collection-table th:nth-child(1), table.collection-table td:nth-child(1){width:6%;}
   table.collection-table th:nth-child(2), table.collection-table td:nth-child(2){width:23%;}
-  table.collection-table th:nth-child(3), table.collection-table td:nth-child(3){width:33%;}
+  table.collection-table th:nth-child(3), table.collection-table td:nth-child(3){width:39%;}
   table.collection-table th:nth-child(4), table.collection-table td:nth-child(4){width:14%;}
   table.collection-table th:nth-child(5), table.collection-table td:nth-child(5){width:18%;}
   thead th{
@@ -484,51 +479,47 @@
 <header>
   <div class="tabs">
     <span class="app-brand">AeroDex</span>
-    <button class="tab active" data-tab="live">Scope</button>
-    <button class="tab" data-tab="log">My Collection</button>
+    <span class="geo-accuracy" id="geoAccuracy"></span>
     <button id="geoBtn" class="geo-btn icon-btn" title="Use my location" aria-label="Use my location"><i class="ph">&#xEDD8;</i></button>
   </div>
 </header>
 
 <main>
 
-  <div id="live-view">
-    <div class="status">
-      <div class="controls">
-        <div class="filter-checks" id="catFilters">
-          <label style="color:var(--cat-ga);"><input type="checkbox" data-cat="ga" checked style="accent-color:var(--cat-ga);"> GA <span class="filter-count" id="filterCountGa">0</span></label>
-          <label style="color:var(--cat-rotor);"><input type="checkbox" data-cat="rotor" checked style="accent-color:var(--cat-rotor);"> Rotor <span class="filter-count" id="filterCountRotor">0</span></label>
-          <label style="color:var(--cat-charter);"><input type="checkbox" data-cat="charter" checked style="accent-color:var(--cat-charter);"> Charter <span class="filter-count" id="filterCountCharter">0</span></label>
-          <label style="color:var(--cat-commercial);"><input type="checkbox" data-cat="commercial" checked style="accent-color:var(--cat-commercial);"> Commercial <span class="filter-count" id="filterCountCommercial">0</span></label>
-        </div>
+  <div class="status">
+    <div class="controls">
+      <div class="filter-checks" id="catFilters">
+        <label style="color:var(--cat-ga);"><input type="checkbox" data-cat="ga" checked style="accent-color:var(--cat-ga);"> GA <span class="filter-count" id="filterCountGa">0</span></label>
+        <label style="color:var(--cat-rotor);"><input type="checkbox" data-cat="rotor" checked style="accent-color:var(--cat-rotor);"> Rotor <span class="filter-count" id="filterCountRotor">0</span></label>
+        <label style="color:var(--cat-charter);"><input type="checkbox" data-cat="charter" checked style="accent-color:var(--cat-charter);"> Charter <span class="filter-count" id="filterCountCharter">0</span></label>
+        <label style="color:var(--cat-commercial);"><input type="checkbox" data-cat="commercial" checked style="accent-color:var(--cat-commercial);"> Commercial <span class="filter-count" id="filterCountCommercial">0</span></label>
       </div>
-      <div style="margin-left:auto;"><span id="geoStatus" style="color:var(--amber);"></span></div>
     </div>
-
-    <div class="scope-wrap">
-      <div id="feedWarning" class="feed-warning" style="display:none;"></div>
-      <div id="scope"></div>
-    </div>
-
-    <div class="modal-backdrop" id="detailBackdrop"></div>
-    <div class="detail" id="detail">
-      <div class="detail-head">
-        <h3 id="detailTitle">—</h3>
-        <button class="detail-close" id="detailClose" aria-label="Close">✕</button>
-      </div>
-      <dl id="detailBody"></dl>
-      <div class="quiz-area" id="quizArea"></div>
-    </div>
-
-    <h2 class="section-heading">Scoreboard</h2>
-    <div id="dash-view"></div>
   </div>
 
-  <div id="log-view" style="display:none;">
-    <div class="status">
-      <div><span id="importStatus" style="color:var(--amber);"></span></div>
+  <div class="scope-wrap">
+    <div id="feedWarning" class="feed-warning" style="display:none;"></div>
+    <div id="scope"></div>
+  </div>
+
+  <div class="modal-backdrop" id="detailBackdrop"></div>
+  <div class="detail" id="detail">
+    <div class="detail-head">
+      <h3 id="detailTitle">—</h3>
+      <button class="detail-close" id="detailClose" aria-label="Close"><i class="ph">&#xE4F6;</i></button>
     </div>
-    <div class="collection-filters">
+    <dl id="detailBody"></dl>
+    <div class="quiz-area" id="quizArea"></div>
+  </div>
+
+  <h2 class="section-heading">Scoreboard</h2>
+  <div id="dash-view"></div>
+
+  <h2 class="section-heading">My Collection</h2>
+  <div class="status">
+    <div><span id="importStatus" style="color:var(--amber);"></span></div>
+  </div>
+  <div class="collection-filters">
       <select id="makeFilterSelect" title="Filter by manufacturer">
         <option value="">All makes</option>
       </select>
@@ -563,13 +554,12 @@
           <h3 id="colDetailTitle">—</h3>
           <span id="colDetailRarity"></span>
         </div>
-        <button class="detail-close" id="colDetailClose" aria-label="Close">✕</button>
+        <button class="detail-close" id="colDetailClose" aria-label="Close"><i class="ph">&#xE4F6;</i></button>
       </div>
       <div id="colDetailPhoto"></div>
       <dl id="colDetailBody"></dl>
       <div id="colDetailLink"></div>
     </div>
-  </div>
 
 </main>
 
@@ -877,9 +867,9 @@ async function poll(){
     const warnEl = document.getElementById('feedWarning');
     if(warnEl){
       warnEl.style.display = 'block';
-      warnEl.textContent = consecutivePollFailures > 1
-        ? `⚠ Live feed unavailable (${consecutivePollFailures} failed attempts) — still retrying…`
-        : `⚠ Live feed unavailable — airplanes.live may be rate-limiting or unreachable. Retrying…`;
+      warnEl.innerHTML = consecutivePollFailures > 1
+        ? `<i class="ph">&#xE4E0;</i> Live feed unavailable (${consecutivePollFailures} failed attempts) — still retrying…`
+        : `<i class="ph">&#xE4E0;</i> Live feed unavailable — airplanes.live may be rate-limiting or unreachable. Retrying…`;
     }
   }
 }
@@ -1011,6 +1001,7 @@ async function submitGuess(hex, chosenDisplay, chosenMake){
   renderTable();
   renderMap();
   renderDashboard();
+  renderLog();
 }
 
 // Real photo of the specific aircraft you tapped, by its hex code — the same
@@ -1107,9 +1098,9 @@ async function renderPhotoCompare(hex, a, model, state){
       <div class="photo-label">${label}</div>
       ${photo
         ? `<div class="photo-img-wrap"><img src="${photo.src}" alt="${caption}" loading="lazy">${isRepresentative ? '<div class="photo-overlay-badge">Representative image</div>' : ''}</div>`
-        : `<a class="photo-missing" href="https://www.google.com/search?tbm=isch&q=${encodeURIComponent(caption)}" target="_blank" rel="noopener">No photo found<span class="photo-missing-link">Search Google Images →</span></a>`}
+        : `<a class="photo-missing" href="https://www.google.com/search?tbm=isch&q=${encodeURIComponent(caption)}" target="_blank" rel="noopener">No photo found<span class="photo-missing-link">Search Google Images <i class="ph">&#xE06C;</i></span></a>`}
       <div class="photo-caption">${caption}</div>
-      ${credit ? `<div class="photo-credit">📷 ${credit} · Planespotters.net</div>` : ''}
+      ${credit ? `<div class="photo-credit"><i class="ph">&#xE10E;</i> ${credit} · Planespotters.net</div>` : ''}
     </div>`;
 
   let html = '<div class="photo-compare">';
@@ -1124,7 +1115,7 @@ async function renderPhotoCompare(hex, a, model, state){
   html += '</div>';
 
   const query = showGuessPhoto ? `${state.chosen} vs ${model}` : model;
-  html += `<a class="photo-fallback-link" href="https://www.google.com/search?tbm=isch&q=${encodeURIComponent(query)}" target="_blank" rel="noopener">🔍 Compare more photos on Google Images</a>`;
+  html += `<a class="photo-fallback-link" href="https://www.google.com/search?tbm=isch&q=${encodeURIComponent(query)}" target="_blank" rel="noopener"><i class="ph">&#xEA64;</i> Compare more photos on Google Images</a>`;
 
   stillThere.innerHTML = html;
 }
@@ -1140,7 +1131,6 @@ function showDetail(hex){
   const revealed = revealedHexes.has(hex);
   const model = typeName(a.t);
   const rows = [
-    ['ICAO hex', a.hex],
     ['Registration', a.r||'—'],
   ];
   if(revealed){
@@ -1150,7 +1140,6 @@ function showDetail(hex){
   }
   rows.push(
     ['Category', a.category ? `${a.category} — ${CATEGORY_LABELS[a.category]||''}` : '—'],
-    ['Squawk', a.squawk||'—'],
     ['Altitude', a.alt_baro!==undefined?a.alt_baro+' ft':'—'],
     ['Ground speed', a.gs!==undefined?Math.round(a.gs)+' kt':'—'],
     ['Track', a.track!==undefined?Math.round(a.track)+'°':'—'],
@@ -1163,7 +1152,7 @@ function showDetail(hex){
   if(revealed){
     if(state && state.chosen){
       const cls = state.score===100 ? 'correct' : state.score===50 ? 'partial' : 'wrong';
-      const headline = state.score===100 ? "✅ 100% — nailed it!" : state.score===50 ? "🟡 50% — right make, wrong model" : "❌ 0% — not quite";
+      const headline = state.score===100 ? '<i class="ph">&#xE666;</i> 100% — nailed it!' : state.score===50 ? '<i class="ph">&#xE43A;</i> 50% — right make, wrong model' : '<i class="ph">&#xE442;</i> 0% — not quite';
       quizEl.innerHTML = `<div class="quiz-result ${cls}">${headline}<br>You guessed <b>${state.chosen}</b> — it's actually a <b>${model}</b>.</div>
         <div class="photo-compare-loading" id="photoCompare">Loading photos…</div>`;
       renderPhotoCompare(hex, a, model, state);
@@ -1474,7 +1463,6 @@ async function showCollectionDetail(hex){
   document.getElementById('colDetailRarity').innerHTML = info ? rarityBadgeHtml(info[2]) : '';
 
   const rows = [
-    ['ICAO hex', rec.hex],
     ['Registration', rec.reg || '—'],
     ['Type code', rec.type || '—'],
   ];
@@ -1486,9 +1474,7 @@ async function showCollectionDetail(hex){
       ['Approach speed', info[4]!=null ? `${info[4]} kt` : '—'],
       ['Wingspan', info[5]!=null ? `${info[5]} ft` : '—'],
       ['Length', info[6]!=null ? `${info[6]} ft` : '—'],
-      ['ICAO wake category', info[7] || '—'],
       ['Airframe class', info[8] || '—'],
-      ['FAA weight class', info[9] || '—'],
     );
   } else {
     rows.push(['Aircraft database', 'No entry for this type code']);
@@ -1504,16 +1490,15 @@ async function showCollectionDetail(hex){
 
   document.getElementById('colDetailBody').innerHTML = rows.map(([k,v])=>`<dt>${k}</dt><dd>${v}</dd>`).join('');
 
-  const queryParts = [];
-  if(info){ queryParts.push(info[0], info[1]); } else if(rec.type){ queryParts.push(rec.type); }
-  if(rec.reg) queryParts.push(rec.reg);
-  const query = queryParts.join(' ');
   const linkEl = document.getElementById('colDetailLink');
-  linkEl.innerHTML = query
-    ? `<a class="photo-fallback-link" href="https://www.google.com/search?tbm=isch&q=${encodeURIComponent(query)}" target="_blank" rel="noopener">View Aircraft</a>`
+  linkEl.innerHTML = rec.reg
+    ? `<a class="photo-fallback-link" href="https://www.flightradar24.com/data/aircraft/${encodeURIComponent(rec.reg.toLowerCase())}" target="_blank" rel="noopener">View Flights</a>`
     : '';
 
-  renderCollectionPhoto(rec, model, query);
+  const photoQueryParts = [];
+  if(info){ photoQueryParts.push(info[0], info[1]); } else if(rec.type){ photoQueryParts.push(rec.type); }
+  if(rec.reg) photoQueryParts.push(rec.reg);
+  renderCollectionPhoto(rec, model, photoQueryParts.join(' '));
 
   document.getElementById('collectionDetail').classList.add('show');
   document.getElementById('collectionDetailBackdrop').classList.add('show');
@@ -1542,10 +1527,10 @@ async function renderCollectionPhoto(rec, model, fallbackQuery){
       <img class="detail-photo" src="${photo.src}" alt="${model||rec.type||rec.hex}" loading="lazy">
       ${isRepresentative ? '<div class="photo-overlay-badge">Representative image</div>' : ''}
     </div>
-    ${photo.credit ? `<div class="photo-credit" style="margin-bottom:10px;">📷 ${photo.credit} · Planespotters.net</div>` : ''}`;
+    ${photo.credit ? `<div class="photo-credit" style="margin-bottom:10px;"><i class="ph">&#xE10E;</i> ${photo.credit} · Planespotters.net</div>` : ''}`;
   } else {
     const q = fallbackQuery || model || rec.type || rec.hex;
-    stillThere.innerHTML = `<a class="detail-photo-missing" href="https://www.google.com/search?tbm=isch&q=${encodeURIComponent(q)}" target="_blank" rel="noopener">No photo found<span class="photo-missing-link">Search Google Images →</span></a>`;
+    stillThere.innerHTML = `<a class="detail-photo-missing" href="https://www.google.com/search?tbm=isch&q=${encodeURIComponent(q)}" target="_blank" rel="noopener">No photo found<span class="photo-missing-link">Search Google Images <i class="ph">&#xE06C;</i></span></a>`;
   }
 }
 
@@ -1633,9 +1618,9 @@ async function renderDashboard(){
   const secondAvg = (total-mid) ? log.slice(mid).reduce((s,e)=>s+e.score,0)/(total-mid) : avg;
   const trendDelta = Math.round(secondAvg - firstAvg);
   const trendLabel = total < 6 ? 'Not enough guesses yet for a trend'
-    : trendDelta > 5 ? `Trending up ⬆ (+${trendDelta} pts)`
-    : trendDelta < -5 ? `Trending down ⬇ (${trendDelta} pts)`
-    : 'Holding steady →';
+    : trendDelta > 5 ? `Trending up <i class="ph">&#xE08E;</i> (+${trendDelta} pts)`
+    : trendDelta < -5 ? `Trending down <i class="ph">&#xE03E;</i> (${trendDelta} pts)`
+    : 'Holding steady <i class="ph">&#xE06C;</i>';
 
   const W = 600, H = 120, pad = 10;
   const points = rolling.map((v,i)=>{
@@ -1671,7 +1656,6 @@ async function renderDashboard(){
       <div class="dash-bar-pct" style="color:${scoreColor(r.acc)};">${r.acc}%</div>
     </div>`;
 
-  const recent = log.slice(-10).reverse();
 
   dashEl.innerHTML = `
     <div class="dash-stats-primary">
@@ -1713,23 +1697,6 @@ async function renderDashboard(){
     <div class="dash-section">
       <h4>By manufacturer <span class="dash-trend-label">weakest first</span></h4>
       ${makeRows.map(barRow).join('')}
-    </div>
-
-    <div class="dash-section">
-      <h4>Recent guesses</h4>
-      <div class="table-scroll">
-        <table class="dash-recent">
-          <thead><tr><th>When</th><th>You guessed</th><th>Actual</th><th>Score</th></tr></thead>
-          <tbody>
-            ${recent.map(e=>`<tr>
-              <td>${new Date(e.ts).toLocaleDateString()} ${new Date(e.ts).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</td>
-              <td>${e.chosenName}</td>
-              <td>${e.correctName}</td>
-              <td style="color:${scoreColor(e.score)};">${e.score}%</td>
-            </tr>`).join('')}
-          </tbody>
-        </table>
-      </div>
     </div>
   `;
 }
@@ -1821,29 +1788,15 @@ document.querySelectorAll('#catFilters input[type=checkbox]').forEach(cb=>{
     renderTable(); renderMap();
   });
 });
-document.querySelectorAll('.tab').forEach(t=>{
-  t.addEventListener('click', ()=>{
-    document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
-    t.classList.add('active');
-    const tab = t.dataset.tab;
-    document.getElementById('live-view').style.display = tab==='live'?'block':'none';
-    document.getElementById('log-view').style.display = tab==='log'?'block':'none';
-    if(tab==='log') renderLog();
-    if(tab==='live'){
-      renderDashboard();
-      if(map) setTimeout(()=>map.invalidateSize(), 50);
-    }
-  });
-});
 
 let geoWatchId = null;
 
 function startGeoTracking(){
+  const btn = document.getElementById('geoBtn');
   if(!navigator.geolocation){
-    document.getElementById('geoStatus').textContent = 'Geolocation not supported here.';
+    btn.title = 'Geolocation not supported here.';
     return;
   }
-  const btn = document.getElementById('geoBtn');
   btn.classList.add('on');
   btn.title = 'Tracking — tap to stop';
   let firstFix = true;
@@ -1855,7 +1808,8 @@ function startGeoTracking(){
     renderTable(); // distance/bearing columns are relative to CENTER
     renderMap();
     const acc = pos.coords.accuracy ? Math.round(pos.coords.accuracy) : null;
-    document.getElementById('geoStatus').textContent = acc ? `Live — accuracy ±${acc} m` : 'Live';
+    document.getElementById('geoAccuracy').textContent = acc ? `±${acc}m` : '';
+    btn.title = 'Tracking — tap to stop';
     if(firstFix){
       map.setView([CENTER.lat, CENTER.lon], map.getZoom());
       firstFix = false;
@@ -1864,7 +1818,8 @@ function startGeoTracking(){
     let msg = 'Location unavailable.';
     if(err.code === err.PERMISSION_DENIED) msg = 'Location permission denied — check browser/site settings.';
     else if(err.code === err.TIMEOUT) msg = 'Location request timed out, still trying…';
-    document.getElementById('geoStatus').textContent = msg;
+    btn.title = msg;
+    document.getElementById('geoAccuracy').textContent = '';
   }, {enableHighAccuracy:true, maximumAge:5000, timeout:15000});
 }
 
@@ -1873,7 +1828,7 @@ function stopGeoTracking(){
   const btn = document.getElementById('geoBtn');
   btn.classList.remove('on');
   btn.title = 'Use my location';
-  document.getElementById('geoStatus').textContent = '';
+  document.getElementById('geoAccuracy').textContent = '';
 }
 
 document.getElementById('geoBtn').addEventListener('click', ()=>{
@@ -1882,6 +1837,7 @@ document.getElementById('geoBtn').addEventListener('click', ()=>{
 
 loadGameScore();
 renderDashboard();
+renderLog();
 initMap();
 poll();
 setInterval(poll, 2000);
