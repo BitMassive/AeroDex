@@ -78,6 +78,7 @@
     font-size:11px;
     color:var(--amber);
     align-self:center;
+    padding-right:8px;
   }
   .tab{
     font-family:'Barlow Condensed',sans-serif;
@@ -208,8 +209,10 @@
   .aim-gate{border:1px solid var(--hardmode);padding:12px;margin-top:10px;}
   .aim-viewfinder-wrap{
     position:relative;width:100%;height:220px;overflow:hidden;
-    margin-bottom:10px;background:#000;border:1px solid var(--hardmode);
+    margin-bottom:10px;background:#000;border:2px solid var(--hardmode);
+    transition:border-color 0.2s;
   }
+  .aim-viewfinder-wrap.aligned{border-color:var(--phosphor);}
   .aim-viewfinder{width:100%;height:100%;object-fit:cover;display:block;}
   .aim-reticle{
     position:absolute;top:50%;left:50%;width:44px;height:44px;
@@ -419,6 +422,7 @@
     max-height:94vh;
   }
   .detail.camera-active .aim-viewfinder-wrap{height:min(60vh, 480px);}
+  .detail.camera-active #detailBody{display:none;}
   .detail-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:8px;}
   .detail-head-title{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
   .detail-photo{width:100%;height:140px;object-fit:cover;border:1px solid var(--grid);background:var(--bg);display:block;margin-bottom:12px;}
@@ -1949,17 +1953,20 @@ function stopOrientationListening(){
 function updateAimGate(){
   const statusEl = document.getElementById('aimStatus');
   const btn = document.getElementById('aimIdentifyBtn');
+  const wrapEl = document.getElementById('aimViewfinderWrap');
   if(!statusEl || !btn) return; // gate isn't showing anymore
   const a = currentAircraft.find(x=>x.hex===hardModeGateHex);
   if(!a) return;
   if(deviceHeading === null){
     statusEl.textContent = 'Requesting compass…';
     statusEl.className = 'aim-status unaligned';
+    if(wrapEl) wrapEl.classList.remove('aligned');
     return;
   }
   const target = computeTargetAim(a);
   const aligned = isAligned(target);
   btn.disabled = !aligned;
+  if(wrapEl) wrapEl.classList.toggle('aligned', aligned);
   if(aligned){
     statusEl.textContent = 'Aligned — you found it!';
     statusEl.className = 'aim-status aligned';
@@ -1991,10 +1998,29 @@ async function startAimCamera(videoEl){
     hardModeStream = stream;
     videoEl.srcObject = stream;
     await videoEl.play();
+    applyMaxZoom(stream);
     return true;
   }catch(e){
     console.error('Live camera unavailable, falling back to native camera capture:', e);
     return false;
+  }
+}
+
+// Zooms the camera to its maximum supported level, since aircraft are small and far away
+// at any normal field of view. This is genuinely best-effort — the MediaTrackConstraints
+// zoom property only has real support on some Chrome/Android combinations; iOS Safari
+// currently exposes no way to control zoom through the web API at all, so on iOS (and any
+// unsupported browser) this silently does nothing rather than failing the whole capture.
+async function applyMaxZoom(stream){
+  try{
+    const track = stream.getVideoTracks()[0];
+    if(!track || typeof track.getCapabilities !== 'function') return;
+    const caps = track.getCapabilities();
+    if(caps && caps.zoom && typeof caps.zoom.max === 'number'){
+      await track.applyConstraints({advanced: [{zoom: caps.zoom.max}]});
+    }
+  }catch(e){
+    console.error('Max zoom not supported on this device/browser:', e);
   }
 }
 
@@ -2022,7 +2048,7 @@ async function renderAimGate(hex, a){
   const target = computeTargetAim(a);
   quizEl.innerHTML = `
     <div class="aim-gate" id="aimGate">
-      <div class="aim-viewfinder-wrap">
+      <div class="aim-viewfinder-wrap" id="aimViewfinderWrap">
         <video id="aimVideo" class="aim-viewfinder" autoplay muted playsinline></video>
         <div class="aim-reticle"></div>
         <div class="aim-overlay-top"><i class="ph">&#xEA64;</i> Point your phone at it</div>
