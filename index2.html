@@ -1129,7 +1129,7 @@ async function collectAircraft(a, score){
   let rec = null;
   try{ const r = await storage.get(key); rec = r ? JSON.parse(r.value) : null; }catch(e){ rec = null; }
   if(!rec){
-    rec = {hex:a.hex, reg:a.r||null, type:a.t||null, category:a.category||null,
+    rec = {hex:a.hex, reg:a.r||null, type:a.t||null, category:a.category||null, group:classify(a),
            first_seen:nowISO, last_seen:nowISO, guesses:0, bestScore:null, lastScore:null};
     newThisSession.add(a.hex);
   }
@@ -1137,6 +1137,7 @@ async function collectAircraft(a, score){
   rec.reg = rec.reg || a.r || null;
   rec.type = rec.type || a.t || null;
   rec.category = rec.category || a.category || null;
+  rec.group = rec.group || classify(a);
   rec.guesses = (rec.guesses||0) + 1;
   if(score !== null && score !== undefined){
     rec.lastScore = score;
@@ -1572,13 +1573,32 @@ let collectionMakeFilter = '';
 let collectionTypeFilter = '';
 let collectionRarityFilter = '';
 
+// Records store TWO different things under similar names: the raw ADS-B emitter
+// category (e.g. "A1", "A7" — used for the "ADS-B category" detail display) and the
+// app's own GA/Rotor/Charter/Commercial bucket (classify()'s result, stored as
+// `group`). The Type filter needs the bucket, not the raw code — those are different
+// vocabularies and comparing one against the other never matched anything. Records
+// collected before `group` existed won't have it stored; this best-effort maps the
+// raw category back to a bucket for those (GA vs Charter can't be recovered
+// retroactively since that distinction needs the original callsign, which was never
+// stored — those just default to 'ga').
+function categoryToGroupFallback(rawCategory){
+  if(rawCategory === 'A7') return 'rotor';
+  if(['A3','A4','A5'].includes(rawCategory)) return 'commercial';
+  if(['A1','A2','A6'].includes(rawCategory)) return 'ga';
+  return null;
+}
+
 // Applies the make/type filters, and optionally rarity too. Rarity is kept separate
 // so the rarity chips can show live counts under the current make/type selection
 // without their own filter hiding themselves from the count.
 function applyCollectionFilters(recs, includeRarity){
   return recs.filter(r=>{
     if(collectionMakeFilter && typeMake(r.type) !== collectionMakeFilter) return false;
-    if(collectionTypeFilter && r.category !== collectionTypeFilter) return false;
+    if(collectionTypeFilter){
+      const group = r.group || categoryToGroupFallback(r.category);
+      if(group !== collectionTypeFilter) return false;
+    }
     if(includeRarity && collectionRarityFilter && typeStatus(r.type) !== collectionRarityFilter) return false;
     return true;
   });
