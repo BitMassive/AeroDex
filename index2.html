@@ -347,10 +347,12 @@
     word-break:break-word;
     overflow-wrap:break-word;
   }
-  table.collection-table th:nth-child(1), table.collection-table td:nth-child(1){width:8%;}
-  table.collection-table th:nth-child(2), table.collection-table td:nth-child(2){width:52%;}
-  table.collection-table th:nth-child(3), table.collection-table td:nth-child(3){width:20%;}
-  table.collection-table th:nth-child(4), table.collection-table td:nth-child(4){width:20%;}
+  table.collection-table th:nth-child(1), table.collection-table td:nth-child(1){width:7%;}
+  table.collection-table th:nth-child(2), table.collection-table td:nth-child(2){width:38%;}
+  table.collection-table th:nth-child(3), table.collection-table td:nth-child(3){width:16%;}
+  table.collection-table th:nth-child(4), table.collection-table td:nth-child(4){width:27%;}
+  table.collection-table th:nth-child(5), table.collection-table td:nth-child(5){width:12%;text-align:right;}
+  table.collection-table td:nth-child(5){text-align:right;}
   thead th{
     text-align:left;
     font-family:'Barlow Condensed',sans-serif;
@@ -373,7 +375,7 @@
   tbody tr.type-row-expanded{background:rgba(143,227,166,0.1);}
   tbody tr.type-row-expanded td:nth-child(2){color:#eafff0;font-weight:bold;}
   tr.sightings-row td{cursor:default;padding:0 0 10px;border-bottom:1px solid var(--hair);}
-  table.sightings-subtable{width:100%;border-collapse:collapse;table-layout:fixed;}
+  table.sightings-subtable{width:100%;min-width:0;border-collapse:collapse;table-layout:fixed;}
   table.sightings-subtable th{
     text-align:left;font-family:'Barlow Condensed',sans-serif;text-transform:uppercase;
     letter-spacing:.03em;font-weight:700;color:var(--muted);font-size:10px;
@@ -381,12 +383,14 @@
   }
   table.sightings-subtable td{padding:6px 8px;font-size:12px;border-bottom:1px solid var(--hair);cursor:pointer;}
   table.sightings-subtable tr:hover td{background:var(--scope);}
-  table.sightings-subtable th:nth-child(1), table.sightings-subtable td:nth-child(1){width:24%;}
-  table.sightings-subtable th:nth-child(2), table.sightings-subtable td:nth-child(2){width:20%;}
-  table.sightings-subtable th:nth-child(3), table.sightings-subtable td:nth-child(3){width:20%;}
-  table.sightings-subtable th:nth-child(4), table.sightings-subtable td:nth-child(4){width:16%;}
-  table.sightings-subtable th:nth-child(5), table.sightings-subtable td:nth-child(5){width:12%;text-align:right;}
-  table.sightings-subtable td:nth-child(5){text-align:right;}
+  table.sightings-subtable th:nth-child(1), table.sightings-subtable td:nth-child(1){width:40%;}
+  table.sightings-subtable th:nth-child(2), table.sightings-subtable td:nth-child(2){width:22%;}
+  table.sightings-subtable th:nth-child(3), table.sightings-subtable td:nth-child(3){width:22%;}
+  table.sightings-subtable th:nth-child(4), table.sightings-subtable td:nth-child(4){width:16%;text-align:right;}
+  table.sightings-subtable td:nth-child(4){text-align:right;}
+  table.sightings-subtable th, table.sightings-subtable td{
+    white-space:normal;word-break:break-word;overflow-wrap:break-word;
+  }
   .model{font-size:10px;color:var(--muted);margin-top:1px;}
   .tap-to-id{color:var(--amber);text-decoration:underline;text-underline-offset:2px;cursor:pointer;}
   .badge{
@@ -691,8 +695,8 @@
     </div>
     <div class="collection-table-wrap">
       <table class="collection-table">
-        <thead><tr><th></th><th>Type</th><th>Score</th><th>Last seen</th></tr></thead>
-        <tbody id="logTable"><tr><td class="empty" colspan="4">Nothing collected yet — tap a plane and take a guess.</td></tr></tbody>
+        <thead><tr><th></th><th>Type</th><th>Score</th><th>Last seen</th><th>Count</th></tr></thead>
+        <tbody id="logTable"><tr><td class="empty" colspan="5">Nothing collected yet — tap a plane and take a guess.</td></tr></tbody>
       </table>
     </div>
 
@@ -1181,7 +1185,7 @@ async function collectAircraft(a, score){
   try{ const r = await storage.get(key); rec = r ? JSON.parse(r.value) : null; }catch(e){ rec = null; }
   if(!rec){
     rec = {hex:a.hex, reg:a.r||null, type:a.t||null, category:a.category||null, group:classify(a),
-           first_seen:nowISO, last_seen:nowISO, guesses:0, bestScore:null, lastScore:null};
+           first_seen:nowISO, last_seen:nowISO, guesses:0, bestScore:null, lastScore:null, firstScore:null};
     newThisSession.add(a.hex);
   }
   rec.last_seen = nowISO;
@@ -1193,6 +1197,7 @@ async function collectAircraft(a, score){
   if(score !== null && score !== undefined){
     rec.lastScore = score;
     rec.bestScore = (rec.bestScore===null || rec.bestScore===undefined) ? score : Math.max(rec.bestScore, score);
+    if(rec.firstScore === null || rec.firstScore === undefined) rec.firstScore = score; // set once, from the first real guess only
   }
   try{ await storage.set(key, JSON.stringify(rec)); }catch(e){ console.error('storage set failed', e); }
 }
@@ -1447,6 +1452,30 @@ const RING_DISTANCES_NM = [5, 10, 20, 50];
 let rangeRingCircles = [];
 let rangeRingLabels = [];
 
+// A closer-in 2 NM ring, useful once you're zoomed in enough to actually make use of
+// it — at the wide zoom levels the other rings are meant for, 2 NM would just be visual
+// clutter near the center pin. Tracked separately since its visibility toggles with zoom
+// rather than always being on the map like the others.
+const CLOSE_RING_NM = 2;
+const CLOSE_RING_MIN_ZOOM = 10; // shown only above this zoom level, not at or below it
+let closeRingCircle = null;
+let closeRingLabel = null;
+let closeRingVisible = false;
+
+function updateCloseRingVisibility(){
+  if(!map || !closeRingCircle) return;
+  const shouldShow = map.getZoom() > CLOSE_RING_MIN_ZOOM;
+  if(shouldShow && !closeRingVisible){
+    closeRingCircle.addTo(map);
+    closeRingLabel.addTo(map);
+    closeRingVisible = true;
+  } else if(!shouldShow && closeRingVisible){
+    map.removeLayer(closeRingCircle);
+    map.removeLayer(closeRingLabel);
+    closeRingVisible = false;
+  }
+}
+
 function buildRangeRings(){
   RING_DISTANCES_NM.forEach(nm=>{
     const circle = L.circle([CENTER.lat, CENTER.lon], {
@@ -1461,6 +1490,18 @@ function buildRangeRings(){
     rangeRingCircles.push(circle);
     rangeRingLabels.push(label);
   });
+
+  closeRingCircle = L.circle([CENTER.lat, CENTER.lon], {
+    radius: CLOSE_RING_NM * 1852,
+    color:'#8fe3a6', weight:1, opacity:0.22, dashArray:'3,7', fill:false, interactive:false
+  });
+  const closeLabelPt = destPoint(CENTER.lat, CENTER.lon, 0, CLOSE_RING_NM);
+  closeRingLabel = L.marker([closeLabelPt.lat, closeLabelPt.lon], {
+    icon: L.divIcon({className:'alt-label', html:`${CLOSE_RING_NM} NM`, iconSize:[40,14], iconAnchor:[20,7]}),
+    interactive:false
+  });
+  updateCloseRingVisibility(); // starts hidden/shown based on whatever zoom the map opens at
+  map.on('zoomend', updateCloseRingVisibility);
 }
 
 // Called whenever CENTER moves (e.g. GPS update) to reposition the pin, rings, and header readout.
@@ -1471,6 +1512,11 @@ function updateCenterVisuals(){
     const labelPt = destPoint(CENTER.lat, CENTER.lon, 0, nm);
     rangeRingLabels[i].setLatLng([labelPt.lat, labelPt.lon]);
   });
+  if(closeRingCircle){
+    closeRingCircle.setLatLng([CENTER.lat, CENTER.lon]);
+    const closeLabelPt = destPoint(CENTER.lat, CENTER.lon, 0, CLOSE_RING_NM);
+    closeRingLabel.setLatLng([closeLabelPt.lat, closeLabelPt.lon]);
+  }
   const coordsEl = document.getElementById('centerCoordsDisplay');
   if(coordsEl) coordsEl.textContent = `${CENTER.lat.toFixed(4)}, ${CENTER.lon.toFixed(4)}`;
 }
@@ -1718,7 +1764,7 @@ async function renderLog(){
     keys = r ? r.keys : [];
   }catch(e){ keys = []; }
   if(!keys.length){
-    document.getElementById('logTable').innerHTML = `<tr><td class="empty" colspan="4">Nothing collected yet — tap a plane and take a guess.</td></tr>`;
+    document.getElementById('logTable').innerHTML = `<tr><td class="empty" colspan="5">Nothing collected yet — tap a plane and take a guess.</td></tr>`;
     updateRarityCounts([]);
     populateMakeFilter([]);
     return;
@@ -1740,7 +1786,7 @@ async function renderLog(){
   const filtered = applyCollectionFilters(recs, true);
 
   if(!filtered.length){
-    document.getElementById('logTable').innerHTML = `<tr><td class="empty" colspan="4">Nothing matches the current filters.</td></tr>`;
+    document.getElementById('logTable').innerHTML = `<tr><td class="empty" colspan="5">Nothing matches the current filters.</td></tr>`;
     return;
   }
 
@@ -1758,7 +1804,8 @@ async function renderLog(){
     const scored = records.filter(r=>r.bestScore!==null && r.bestScore!==undefined);
     const avgScore = scored.length ? Math.round(scored.reduce((s,r)=>s+r.bestScore,0)/scored.length) : null;
     const lastSeen = records.reduce((max,r)=> new Date(r.last_seen) > new Date(max) ? r.last_seen : max, records[0].last_seen);
-    return {groupKey, code, records, avgScore, lastSeen};
+    const totalCount = records.reduce((sum,r)=> sum + (r.guesses||1), 0); // total sightings across every ident of this type
+    return {groupKey, code, records, avgScore, lastSeen, totalCount};
   });
   groupList.sort((a,b)=> new Date(b.lastSeen) - new Date(a.lastSeen));
 
@@ -1784,29 +1831,31 @@ async function renderLog(){
       <td>${displayName}</td>
       <td>${scoreLabel}</td>
       <td>${formatDateShort(g.lastSeen)}</td>
+      <td>${g.totalCount}</td>
     </tr>`;
 
     if(!isExpanded) return typeRow;
 
     const sightings = [...g.records].sort((a,b)=> new Date(b.last_seen) - new Date(a.last_seen));
     const sightingsRows = sightings.map(r=>{
-      const hasScore = r.bestScore !== null && r.bestScore !== undefined;
-      const sScoreLabel = hasScore
-        ? `<span style="color:${scoreColor(r.bestScore)};">${r.bestScore}%</span>`
+      const firstLabel = (r.firstScore!==null && r.firstScore!==undefined)
+        ? `<span style="color:${scoreColor(r.firstScore)};">${r.firstScore}%</span>`
+        : `<span style="color:var(--muted);">—</span>`;
+      const lastLabel = (r.lastScore!==null && r.lastScore!==undefined)
+        ? `<span style="color:${scoreColor(r.lastScore)};">${r.lastScore}%</span>`
         : `<span style="color:var(--muted);">—</span>`;
       return `<tr data-hex="${r.hex}">
         <td>${r.reg||r.hex}</td>
-        <td>${formatDateShort(r.first_seen)}</td>
-        <td>${formatDateShort(r.last_seen)}</td>
-        <td>${sScoreLabel}</td>
+        <td>${firstLabel}</td>
+        <td>${lastLabel}</td>
         <td>${r.guesses||1}</td>
       </tr>`;
     }).join('');
 
     const sightingsTable = `<tr class="sightings-row">
-      <td colspan="4">
+      <td colspan="5">
         <table class="sightings-subtable">
-          <thead><tr><th>Ident</th><th>First seen</th><th>Last seen</th><th>Score</th><th>Taps</th></tr></thead>
+          <thead><tr><th>Ident</th><th>Score First</th><th>Score Last</th><th>Count</th></tr></thead>
           <tbody>${sightingsRows}</tbody>
         </table>
       </td>
