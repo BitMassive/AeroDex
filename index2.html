@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Hudson Corridor Watch</title>
+<title>AeroDex</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.1/src/regular/style.css" />
 <style>
@@ -289,6 +289,13 @@
     padding-top:16px;
     border-top:1px solid var(--hair);
   }
+  .collection-header{
+    display:flex;justify-content:space-between;align-items:center;
+    margin:28px 0 14px;padding-top:16px;border-top:1px solid var(--hair);
+  }
+  .collection-header .section-heading{margin:0;padding-top:0;border-top:none;}
+  .collection-header-actions{display:flex;gap:8px;}
+  .collection-header-actions .geo-btn{padding:8px 10px;}
   .scope-status{font-size:11px;color:var(--muted);margin-bottom:8px;}
   .scope-status b{color:var(--phosphor);}
   #scope{width:100%;aspect-ratio:1/1;background:var(--scope);}
@@ -621,7 +628,14 @@
   <h2 class="section-heading">Scoreboard</h2>
   <div id="dash-view"></div>
 
-  <h2 class="section-heading">My Collection</h2>
+  <div class="collection-header">
+    <h2 class="section-heading" style="margin:0;">My Collection</h2>
+    <div class="collection-header-actions">
+      <button id="exportBtn" class="geo-btn icon-btn" title="Export JSON" aria-label="Export JSON"><i class="ph">&#xEAF4;</i></button>
+      <button id="importBtn" class="geo-btn icon-btn" title="Import JSON" aria-label="Import JSON"><i class="ph">&#xE256;</i></button>
+      <input type="file" id="importFile" accept="application/json,.json" style="display:none;">
+    </div>
+  </div>
   <div class="status">
     <div><span id="importStatus" style="color:var(--amber);"></span></div>
   </div>
@@ -643,9 +657,6 @@
       <span class="rarity-count-col" data-rarity="Epic" title="Tap to filter: Epic" style="color:#a855f7;"><i class="ph">&#xE42C;</i><b id="countEpic">0</b></span>
       <span class="rarity-count-col legendary-text" data-rarity="Legendary" title="Tap to filter: Legendary"><i class="ph">&#xE812;</i><b id="countLegendary">0</b></span>
       <span class="rarity-count-col" data-rarity="Unclassified" title="Tap to filter: Unclassified — interesting, not yet rarity-rated" style="color:#7dc4ff;"><i class="ph">&#xE72C;</i><b id="countUnclassified">0</b></span>
-      <button id="exportBtn" class="geo-btn icon-btn" title="Export JSON" aria-label="Export JSON"><i class="ph">&#xEAF4;</i></button>
-      <button id="importBtn" class="geo-btn icon-btn" title="Import JSON" aria-label="Import JSON"><i class="ph">&#xE256;</i></button>
-      <input type="file" id="importFile" accept="application/json,.json" style="display:none;">
       <input type="file" id="aimPhotoInput" accept="image/*" capture="environment" style="display:none;">
     </div>
     <div class="collection-table-wrap">
@@ -1249,18 +1260,16 @@ async function fetchWikiSummaryThumbnail(title){
 }
 
 // Representative photo of a guessed TYPE (not a specific airframe) via Wikipedia's
-// image API. Tries the full display name first, then just make + first model word,
-// since aircraft articles are often titled more tersely than our display name — then,
-// if neither is a real title, falls back to an actual Wikipedia search so odd/terse
-// model strings (e.g. "Cessna 1SP") still have a shot at finding the closest real article.
+// image API. Tries the full display name first, since aircraft articles are often
+// titled tersely — then, if that's not a real title, falls back to an actual Wikipedia
+// search so odd/terse model strings (e.g. "Cessna 1SP") still have a shot at finding
+// the closest real article. Deliberately does NOT fall back to a manufacturer-only
+// title match (e.g. "Grumman American" alone) — that hits the company's own article,
+// not any specific aircraft, and a company page's lead photo can be anything (an
+// executive, a press conference, a logo), not the airplane you're trying to show.
 async function fetchTypePhoto(displayName){
-  const words = displayName.split(' ');
-  const attempts = [displayName];
-  if(words.length > 2) attempts.push(words.slice(0,2).join(' '));
-  for(const title of attempts){
-    const photo = await fetchWikiSummaryThumbnail(title);
-    if(photo) return photo;
-  }
+  const photo = await fetchWikiSummaryThumbnail(displayName);
+  if(photo) return photo;
   try{
     const searchRes = await fetch(`https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(displayName+' aircraft')}&format=json&origin=*&srlimit=1`);
     if(searchRes.ok){
@@ -1321,8 +1330,9 @@ async function renderPhotoCompare(hex, a, model, state){
   );
   html += '</div>';
 
-  const query = showGuessPhoto ? `${state.chosen} vs ${model}` : model;
-  html += `<a class="photo-fallback-link" href="https://www.google.com/search?tbm=isch&q=${encodeURIComponent(query)}" target="_blank" rel="noopener"><i class="ph">&#xEA64;</i> Compare more photos on Google Images</a>`;
+  html += a.r
+    ? `<a class="photo-fallback-link" href="https://www.flightradar24.com/data/aircraft/${encodeURIComponent(a.r.toLowerCase())}" target="_blank" rel="noopener">View Flights</a>`
+    : '';
 
   stillThere.innerHTML = html;
 }
@@ -1479,8 +1489,28 @@ function initMap(){
     renderAirports();
   });
 
-  map.setView([CENTER.lat, CENTER.lon], 13);
+  // Point-in-time location fix at page load, rather than always defaulting to the
+  // fixed home coordinates — CENTER only serves as a fallback now, for when
+  // geolocation fails or is denied.
+  map.setView([CENTER.lat, CENTER.lon], 10);
   renderAirports();
+  if(navigator.geolocation){
+    navigator.geolocation.getCurrentPosition(pos=>{
+      CENTER.lat = pos.coords.latitude;
+      CENTER.lon = pos.coords.longitude;
+      updateCenterVisuals();
+      map.setView([CENTER.lat, CENTER.lon], 10);
+      renderTable();
+      renderMap();
+      renderAirports();
+      const acc = pos.coords.accuracy ? Math.round(pos.coords.accuracy) : null;
+      const stamp = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+      const accEl = document.getElementById('geoAccuracy');
+      if(accEl) accEl.textContent = acc ? `±${acc}m · ${stamp}` : stamp;
+    }, err=>{
+      console.error('Initial location fix failed, using fallback center:', err);
+    }, {enableHighAccuracy:true, maximumAge:60000, timeout:15000});
+  }
 }
 
 function closeDetail(){
@@ -1570,10 +1600,13 @@ function renderMap(){
     hitTarget.on('click', ()=> selectAircraft(a.hex));
     aircraftLayer.addLayer(hitTarget);
 
-    // estimated heading vector: projects ~1 minute of travel along current ground track
+    // estimated heading vector: projects 30 seconds of travel along current ground
+    // track. Recomputed from scratch on every poll (renderMap() clears and rebuilds
+    // this whole layer each cycle), so the vector always reflects the aircraft's most
+    // recently reported position, speed, and track — not just its heading at first sight.
     if(typeof a.track === 'number'){
       const speedKt = typeof a.gs === 'number' ? a.gs : 90;
-      const lengthNM = Math.min(Math.max(speedKt/60, 0.08), 1.2);
+      const lengthNM = Math.min(Math.max(speedKt/120, 0.04), 0.6);
       const tip = destPoint(a.lat, a.lon, a.track, lengthNM);
       const vector = L.polyline([[a.lat,a.lon],[tip.lat,tip.lon]], {
         color: isSel ? '#eafff0' : fill,
@@ -1711,16 +1744,22 @@ function populateMakeFilter(recs){
 
 let currentDetailHex = null; // which aircraft the Collection detail modal is currently showing
 
-// Toggleable correction form: rarity dropdown + make/model text fields, pre-filled
-// with whatever's currently showing (override, if any, else the database value).
-// Saves via saveTypeOverride() — applies to every aircraft of this type from now on.
+// Toggleable correction form: type code + rarity/make/model/group fields, pre-filled
+// with whatever's currently showing. Renders even when the record has no type code at
+// all — some ADS-B records come in without one, and assigning it here is how that gap
+// gets closed going forward. Saves type code changes directly to the record (a specific
+// tail number genuinely has one real type), then applies rarity/make/model/group as
+// type-wide overrides on whatever code ends up in effect.
 function renderTypeEditForm(hex, code, current){
   const el = document.getElementById('colDetailEdit');
-  if(!el || !code) { if(el) el.innerHTML = ''; return; }
+  if(!el) return;
   const statuses = ['Common','Rare','Epic','Legendary','Unclassified'];
   const groups = [['ga','GA'],['rotor','Rotor'],['charter','Charter'],['commercial','Commercial']];
   el.innerHTML = `<a class="type-edit-toggle" id="typeEditToggle">Correct this classification</a>
     <div class="type-edit-form" id="typeEditForm" style="display:none;">
+      <label class="type-edit-label">Type code <span class="type-edit-scope">(this aircraft's actual ICAO type — some ADS-B records arrive without one)</span>
+        <input type="text" id="typeEditCode" value="${(code||'').replace(/"/g,'&quot;')}" placeholder="e.g. C172" style="text-transform:uppercase;">
+      </label>
       <label class="type-edit-label">Rarity <span class="type-edit-scope">(applies to every aircraft of this type)</span>
         <select id="typeEditStatus">
           ${statuses.map(s=>`<option value="${s}" ${s===current.status?'selected':''}>${s}</option>`).join('')}
@@ -1748,20 +1787,43 @@ function renderTypeEditForm(hex, code, current){
     form.style.display = form.style.display === 'none' ? 'block' : 'none';
   });
   document.getElementById('typeEditSave').addEventListener('click', async ()=>{
-    await saveTypeOverride(code, {
-      status: document.getElementById('typeEditStatus').value,
-      make: document.getElementById('typeEditMake').value.trim(),
-      model: document.getElementById('typeEditModel').value.trim(),
-      group: document.getElementById('typeEditGroup').value,
-    });
+    const newCode = document.getElementById('typeEditCode').value.trim().toUpperCase();
+    let effectiveCode = code;
+    if(newCode && newCode !== code){
+      await saveRecordTypeCode(hex, newCode);
+      effectiveCode = newCode;
+    }
+    if(effectiveCode){
+      await saveTypeOverride(effectiveCode, {
+        status: document.getElementById('typeEditStatus').value,
+        make: document.getElementById('typeEditMake').value.trim(),
+        model: document.getElementById('typeEditModel').value.trim(),
+        group: document.getElementById('typeEditGroup').value,
+      });
+    }
     if(currentDetailHex) showCollectionDetail(currentDetailHex); // re-render with the new values
   });
   document.getElementById('typeEditReset').addEventListener('click', async ()=>{
-    delete typeOverrides[code];
-    try{ await storage.set('typeOverrides', JSON.stringify(typeOverrides)); }catch(e){}
+    if(code){
+      delete typeOverrides[code];
+      try{ await storage.set('typeOverrides', JSON.stringify(typeOverrides)); }catch(e){}
+    }
     renderMap(); renderTable(); renderLog(); renderDashboard();
     if(currentDetailHex) showCollectionDetail(currentDetailHex);
   });
+}
+
+// Assigns a type code directly to one specific collected aircraft — for records that
+// came in from ADS-B without one. This is a per-record fix, not a type-wide override:
+// a given tail number genuinely has one real type, so it's set on the record itself.
+async function saveRecordTypeCode(hex, newCode){
+  try{
+    const r = await storage.get('bird:'+hex);
+    if(!r) return;
+    const rec = JSON.parse(r.value);
+    rec.type = newCode;
+    await storage.set('bird:'+hex, JSON.stringify(rec));
+  }catch(e){ console.error('Could not save type code:', e); }
 }
 
 // Full detail modal for a collected aircraft: the record's own history plus every
@@ -2036,7 +2098,7 @@ async function exportCollection(){
   }
   const payload = {
     exported_at: new Date().toISOString(),
-    source:'Hudson Corridor Watch',
+    source:'AeroDex',
     count: birds.length,
     birds,
     typeOverrides: Object.keys(typeOverrides).length ? typeOverrides : undefined,
