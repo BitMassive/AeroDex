@@ -1600,13 +1600,18 @@ function renderMap(){
     hitTarget.on('click', ()=> selectAircraft(a.hex));
     aircraftLayer.addLayer(hitTarget);
 
-    // estimated heading vector: projects 30 seconds of travel along current ground
-    // track. Recomputed from scratch on every poll (renderMap() clears and rebuilds
-    // this whole layer each cycle), so the vector always reflects the aircraft's most
-    // recently reported position, speed, and track — not just its heading at first sight.
-    if(typeof a.track === 'number'){
-      const speedKt = typeof a.gs === 'number' ? a.gs : 90;
-      const lengthNM = Math.min(Math.max(speedKt/120, 0.04), 0.6);
+    // Heading vector: the tip marks the aircraft's true predicted position 30 seconds
+    // from now, at its current ground speed and track — this is a timing aid, not a
+    // decoration. Watching the tip cross a fixed point in your sightline tells you
+    // "it'll physically be there in 30 seconds," which only works if the line reflects
+    // the real distance. No min/max clamping here on purpose: a clamped line for a fast
+    // jet would show it arriving much sooner than the line implies, and for a slow
+    // aircraft, later — either way defeating the whole point. If ground speed isn't
+    // being reported, no vector is drawn at all rather than guessing a fallback speed,
+    // since a fabricated prediction is worse than none for something you're using to
+    // time where to look.
+    if(typeof a.track === 'number' && typeof a.gs === 'number' && a.gs > 0){
+      const lengthNM = a.gs / 120; // true distance covered in 30 seconds at current ground speed
       const tip = destPoint(a.lat, a.lon, a.track, lengthNM);
       const vector = L.polyline([[a.lat,a.lon],[tip.lat,tip.lon]], {
         color: isSel ? '#eafff0' : fill,
