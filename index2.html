@@ -461,6 +461,10 @@
     display:flex;flex-direction:column;gap:3px;font-size:10px;color:var(--muted);
     text-transform:uppercase;letter-spacing:.03em;
   }
+  .type-edit-scope{
+    text-transform:none;letter-spacing:normal;font-weight:400;
+    color:var(--muted);opacity:0.7;font-size:9px;
+  }
   .type-edit-label select, .type-edit-label input{width:100%;}
   .type-edit-actions{display:flex;gap:8px;margin-top:4px;}
   .type-edit-actions .geo-btn{flex:1;font-size:10px;padding:8px;}
@@ -482,6 +486,10 @@
   .quiz-result.correct{color:var(--phosphor);border-color:var(--phosphor);}
   .quiz-result.partial{color:var(--amber);border-color:var(--amber);}
   .quiz-result.wrong{color:var(--magenta);border-color:var(--magenta);}
+  .photo-hint-note{
+    font-size:10px;color:var(--amber);margin-top:6px;padding:6px 8px;
+    border:1px solid var(--amber);background:rgba(255,196,112,0.08);
+  }
   .photo-compare-loading{font-size:10px;color:var(--muted);margin-top:10px;}
   .photo-compare{display:flex;gap:10px;margin-top:10px;}
   .photo-compare-col{flex:1;text-align:center;min-width:0;}
@@ -575,6 +583,7 @@
     <span class="geo-accuracy" id="geoAccuracy"></span>
     <div class="btn-pair">
       <button id="hardModeBtn" class="geo-btn icon-btn" title="Hard Mode — point your phone at the aircraft to identify it" aria-label="Toggle Hard Mode"><i class="ph">&#xEA64;</i></button>
+      <button id="photoHintsBtn" class="geo-btn icon-btn" title="Photo hints — see a picture before you guess (handy indoors, or when the plane's too far to see)" aria-label="Toggle photo hints"><i class="ph">&#xE10E;</i></button>
       <button id="geoBtn" class="geo-btn icon-btn" title="Use my location" aria-label="Use my location"><i class="ph">&#xEDD8;</i></button>
     </div>
   </div>
@@ -604,6 +613,7 @@
       <h3 id="detailTitle">—</h3>
       <button class="detail-close" id="detailClose" aria-label="Close"><i class="ph">&#xE4F6;</i></button>
     </div>
+    <div id="detailPhoto"></div>
     <dl id="detailBody"></dl>
     <div class="quiz-area" id="quizArea"></div>
   </div>
@@ -1171,16 +1181,23 @@ async function submitGuess(hex, chosenDisplay, chosenMake){
   const correct = info ? (info[0]+' '+info[1]) : null;
   const correctMake = info ? info[0] : null;
   // Scoring: exact model match = 100%, right manufacturer but wrong model = 50%, otherwise 0%.
-  const score = chosenDisplay === correct ? 100 : (chosenMake === correctMake ? 50 : 0);
+  const rawScore = chosenDisplay === correct ? 100 : (chosenMake === correctMake ? 50 : 0);
+  // Photo hints make identification meaningfully easier, so a guess made with hints on
+  // is worth half — keeps your Scoreboard honest about how you're actually doing when
+  // you don't have a picture to lean on, versus when you do.
+  const usedPhotoHint = photoHintsEnabled;
+  const score = usedPhotoHint ? Math.round(rawScore / 2) : rawScore;
 
   const state = quizStates.get(hex) || {};
   state.chosen = chosenDisplay;
   state.score = score;
+  state.rawScore = rawScore;
+  state.usedPhotoHint = usedPhotoHint;
   quizStates.set(hex, state);
   revealedHexes.add(hex);
 
   await collectAircraft(a, score);
-  await logGuess({hex:a.hex, typeCode:a.t, correctName:correct, correctMake, chosenName:chosenDisplay, chosenMake, score, bucket: typeBucket(a.t), category: classify(a)});
+  await logGuess({hex:a.hex, typeCode:a.t, correctName:correct, correctMake, chosenName:chosenDisplay, chosenMake, score, rawScore, usedPhotoHint, bucket: typeBucket(a.t), category: classify(a)});
 
   gameScore.total++;
   gameScore.sumScore = (gameScore.sumScore||0) + score;
@@ -1337,13 +1354,26 @@ function showDetail(hex){
   );
   document.getElementById('detailBody').innerHTML = rows.map(([k,v])=>`<dt>${k}</dt><dd>${v}</dd>`).join('');
 
+  if(revealed || photoHintsEnabled){
+    renderCollectionPhoto({hex:a.hex, reg:a.r, type:a.t}, model, `${model||a.t||''} ${a.r||''}`.trim(), 'detailPhoto');
+  } else {
+    const photoEl = document.getElementById('detailPhoto');
+    if(photoEl) photoEl.innerHTML = '';
+  }
+
   const quizEl = document.getElementById('quizArea');
   const state = quizStates.get(hex);
   if(revealed){
     if(state && state.chosen){
-      const cls = state.score===100 ? 'correct' : state.score===50 ? 'partial' : 'wrong';
-      const headline = state.score===100 ? '<i class="ph">&#xE666;</i> 100% — nailed it!' : state.score===50 ? '<i class="ph">&#xE43A;</i> 50% — right make, wrong model' : '<i class="ph">&#xE442;</i> 0% — not quite';
-      quizEl.innerHTML = `<div class="quiz-result ${cls}">${headline}<br>You guessed <b>${state.chosen}</b> — it's actually a <b>${model}</b>.</div>
+      const rawScore = state.rawScore !== undefined ? state.rawScore : state.score; // older records won't have rawScore stored
+      const cls = rawScore===100 ? 'correct' : rawScore===50 ? 'partial' : 'wrong';
+      const headlineText = rawScore===100 ? 'nailed it!' : rawScore===50 ? 'right make, wrong model' : 'not quite';
+      const headlineIcon = rawScore===100 ? '&#xE666;' : rawScore===50 ? '&#xE43A;' : '&#xE442;';
+      const headline = `<i class="ph">${headlineIcon}</i> ${state.score}% — ${headlineText}`;
+      const hintNote = state.usedPhotoHint
+        ? `<div class="photo-hint-note"><i class="ph">&#xE10E;</i> Photo hint was on — score halved (would've been ${rawScore}% without it)</div>`
+        : '';
+      quizEl.innerHTML = `<div class="quiz-result ${cls}">${headline}<br>You guessed <b>${state.chosen}</b> — it's actually a <b>${model}</b>.</div>${hintNote}
         <div class="photo-compare-loading" id="photoCompare">Loading photos…</div>`;
       renderPhotoCompare(hex, a, model, state);
     } else if(state && state.noData){
@@ -1589,16 +1619,23 @@ function categoryToGroupFallback(rawCategory){
   return null;
 }
 
+// Resolves a record's effective GA/Rotor/Charter/Commercial bucket: your type-wide
+// correction (if you've made one for this type code) wins over everything, same
+// priority order as rarity/make/model. Falls back to what was actually observed at
+// catch time when there's no correction.
+function resolveRecordGroup(r){
+  const ov = typeOverrides[r.type];
+  if(ov && ov.group) return ov.group;
+  return r.group || categoryToGroupFallback(r.category);
+}
+
 // Applies the make/type filters, and optionally rarity too. Rarity is kept separate
 // so the rarity chips can show live counts under the current make/type selection
 // without their own filter hiding themselves from the count.
 function applyCollectionFilters(recs, includeRarity){
   return recs.filter(r=>{
     if(collectionMakeFilter && typeMake(r.type) !== collectionMakeFilter) return false;
-    if(collectionTypeFilter){
-      const group = r.group || categoryToGroupFallback(r.category);
-      if(group !== collectionTypeFilter) return false;
-    }
+    if(collectionTypeFilter && resolveRecordGroup(r) !== collectionTypeFilter) return false;
     if(includeRarity && collectionRarityFilter && typeStatus(r.type) !== collectionRarityFilter) return false;
     return true;
   });
@@ -1677,22 +1714,28 @@ let currentDetailHex = null; // which aircraft the Collection detail modal is cu
 // Toggleable correction form: rarity dropdown + make/model text fields, pre-filled
 // with whatever's currently showing (override, if any, else the database value).
 // Saves via saveTypeOverride() — applies to every aircraft of this type from now on.
-function renderTypeEditForm(code, current){
+function renderTypeEditForm(hex, code, current){
   const el = document.getElementById('colDetailEdit');
   if(!el || !code) { if(el) el.innerHTML = ''; return; }
   const statuses = ['Common','Rare','Epic','Legendary','Unclassified'];
+  const groups = [['ga','GA'],['rotor','Rotor'],['charter','Charter'],['commercial','Commercial']];
   el.innerHTML = `<a class="type-edit-toggle" id="typeEditToggle">Correct this classification</a>
     <div class="type-edit-form" id="typeEditForm" style="display:none;">
-      <label class="type-edit-label">Rarity
+      <label class="type-edit-label">Rarity <span class="type-edit-scope">(applies to every aircraft of this type)</span>
         <select id="typeEditStatus">
           ${statuses.map(s=>`<option value="${s}" ${s===current.status?'selected':''}>${s}</option>`).join('')}
         </select>
       </label>
-      <label class="type-edit-label">Manufacturer
+      <label class="type-edit-label">Manufacturer <span class="type-edit-scope">(applies to every aircraft of this type)</span>
         <input type="text" id="typeEditMake" value="${(current.make||'').replace(/"/g,'&quot;')}">
       </label>
-      <label class="type-edit-label">Model
+      <label class="type-edit-label">Model <span class="type-edit-scope">(applies to every aircraft of this type)</span>
         <input type="text" id="typeEditModel" value="${(current.model||'').replace(/"/g,'&quot;')}">
+      </label>
+      <label class="type-edit-label">Type <span class="type-edit-scope">(applies to every aircraft of this type)</span>
+        <select id="typeEditGroup">
+          ${groups.map(([v,l])=>`<option value="${v}" ${v===current.group?'selected':''}>${l}</option>`).join('')}
+        </select>
       </label>
       <div class="type-edit-actions">
         <button class="geo-btn" id="typeEditSave">Save correction</button>
@@ -1709,6 +1752,7 @@ function renderTypeEditForm(code, current){
       status: document.getElementById('typeEditStatus').value,
       make: document.getElementById('typeEditMake').value.trim(),
       model: document.getElementById('typeEditModel').value.trim(),
+      group: document.getElementById('typeEditGroup').value,
     });
     if(currentDetailHex) showCollectionDetail(currentDetailHex); // re-render with the new values
   });
@@ -1739,6 +1783,9 @@ async function showCollectionDetail(hex){
     ['Registration', rec.reg || '—'],
     ['Type code', rec.type || '—'],
   ];
+  const group = resolveRecordGroup(rec);
+  const GROUP_LABELS = {ga:'GA', rotor:'Rotor', charter:'Charter', commercial:'Commercial'};
+  if(group) rows.push(['Type', GROUP_LABELS[group] || group]);
   if(info || isOverridden){
     rows.push(
       ['Manufacturer', make || '—'],
@@ -1763,7 +1810,7 @@ async function showCollectionDetail(hex){
   if(isOverridden) rows.push(['Classification', '<span style="color:var(--amber);">Personally corrected</span>']);
 
   document.getElementById('colDetailBody').innerHTML = rows.map(([k,v])=>`<dt>${k}</dt><dd>${v}</dd>`).join('');
-  renderTypeEditForm(rec.type, {make, model: modelName, status});
+  renderTypeEditForm(hex, rec.type, {make, model: modelName, status, group});
 
   const linkEl = document.getElementById('colDetailLink');
   linkEl.innerHTML = rec.reg
@@ -1782,8 +1829,8 @@ async function showCollectionDetail(hex){
 // Photo at the top of the collection detail modal: a real photo of that specific tail
 // number when Planespotters has one, falling back to a representative Wikipedia photo
 // of the type (clearly labeled), or a clickable search link if neither has anything.
-async function renderCollectionPhoto(rec, model, fallbackQuery){
-  const container = document.getElementById('colDetailPhoto');
+async function renderCollectionPhoto(rec, model, fallbackQuery, containerId='colDetailPhoto'){
+  const container = document.getElementById(containerId);
   if(!container) return;
   container.innerHTML = `<div class="detail-photo-missing" style="cursor:default;">Loading photo…</div>`;
 
@@ -1794,7 +1841,7 @@ async function renderCollectionPhoto(rec, model, fallbackQuery){
     isRepresentative = !!photo;
   }
 
-  const stillThere = document.getElementById('colDetailPhoto');
+  const stillThere = document.getElementById(containerId);
   if(!stillThere) return;
 
   if(photo){
@@ -2159,13 +2206,23 @@ function updateAimGate(){
   if(!statusEl || !btn) return; // gate isn't showing anymore
   const a = currentAircraft.find(x=>x.hex===hardModeGateHex);
   if(!a) return;
+
+  // Recompute against the aircraft's CURRENT position every time — it moves fast in
+  // 3D, so a target locked to where it was when the gate opened goes stale within
+  // seconds. This also updates the on-screen bearing/elevation numbers themselves,
+  // not just the internal alignment check, so what you see always matches what's live.
+  const target = computeTargetAim(a);
+  const bearingEl = document.getElementById('aimTargetBearing');
+  const elevationEl = document.getElementById('aimTargetElevation');
+  if(bearingEl) bearingEl.textContent = `${Math.round(target.bearing)}°`;
+  if(elevationEl) elevationEl.textContent = `${Math.round(target.elevation)}°`;
+
   if(deviceHeading === null){
     statusEl.textContent = 'Requesting compass…';
     statusEl.className = 'aim-status unaligned';
     if(wrapEl) wrapEl.classList.remove('aligned');
     return;
   }
-  const target = computeTargetAim(a);
   const aligned = isAligned(target);
   btn.disabled = !aligned;
   if(wrapEl) wrapEl.classList.toggle('aligned', aligned);
@@ -2256,8 +2313,8 @@ async function renderAimGate(hex, a){
         <div class="aim-overlay-top"><i class="ph">&#xEA64;</i> Point your phone at it</div>
         <div class="aim-overlay-bottom">
           <div class="aim-readout">
-            <div><span class="aim-label">Target bearing</span><span class="aim-value">${Math.round(target.bearing)}°</span></div>
-            <div><span class="aim-label">Target elevation</span><span class="aim-value">${Math.round(target.elevation)}°</span></div>
+            <div><span class="aim-label">Target bearing</span><span class="aim-value" id="aimTargetBearing">${Math.round(target.bearing)}°</span></div>
+            <div><span class="aim-label">Target elevation</span><span class="aim-value" id="aimTargetElevation">${Math.round(target.elevation)}°</span></div>
           </div>
           <div class="aim-status unaligned" id="aimStatus">Requesting compass…</div>
         </div>
@@ -2306,6 +2363,17 @@ function proceedPastAimGate(hex){
   hardModeGateHex = null;
   showDetail(hex);
 }
+
+// Photo hints: a deliberate practice mode, not a game-breaking spoiler — lets you see
+// a picture before guessing, useful indoors or when the plane's too far/obscured to
+// actually see, so you can still practice identification by photo rather than needing
+// eyes-on. Overrides the normal reveal-gate in showDetail() while active.
+let photoHintsEnabled = false;
+document.getElementById('photoHintsBtn').addEventListener('click', ()=>{
+  photoHintsEnabled = !photoHintsEnabled;
+  document.getElementById('photoHintsBtn').classList.toggle('on', photoHintsEnabled);
+  if(selectedHex) showDetail(selectedHex); // refresh whatever's currently open right away
+});
 
 document.getElementById('hardModeBtn').addEventListener('click', async ()=>{
   const btn = document.getElementById('hardModeBtn');
