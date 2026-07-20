@@ -1460,20 +1460,19 @@ const CLOSE_RING_NM = 2;
 const CLOSE_RING_MIN_ZOOM = 10; // shown only above this zoom level, not at or below it
 let closeRingCircle = null;
 let closeRingLabel = null;
-let closeRingVisible = false;
 
 function updateCloseRingVisibility(){
-  if(!map || !closeRingCircle) return;
+  if(!closeRingCircle) return;
   const shouldShow = map.getZoom() > CLOSE_RING_MIN_ZOOM;
-  if(shouldShow && !closeRingVisible){
-    closeRingCircle.addTo(map);
-    closeRingLabel.addTo(map);
-    closeRingVisible = true;
-  } else if(!shouldShow && closeRingVisible){
-    map.removeLayer(closeRingCircle);
-    map.removeLayer(closeRingLabel);
-    closeRingVisible = false;
-  }
+  // Toggling opacity only — never add/remove this layer dynamically. Doing that from
+  // inside a zoomend handler caused a real crash: setView() fires 'zoomend' synchronously
+  // before it has finished resetting the view, and adding a brand-new layer to Leaflet's
+  // SVG renderer in that exact window throws inside Leaflet's own internals (confirmed via
+  // console: _updateCircle/_empty, "Cannot read properties of undefined (reading
+  // 'intersects')"), which aborted the rest of setView() — that's what was actually taking
+  // tiles, the other range rings, and aircraft down with it.
+  closeRingCircle.setStyle({opacity: shouldShow ? 0.22 : 0});
+  closeRingLabel.setOpacity(shouldShow ? 1 : 0);
 }
 
 function buildRangeRings(){
@@ -1491,16 +1490,18 @@ function buildRangeRings(){
     rangeRingLabels.push(label);
   });
 
+  // Close-in 2 NM ring, added the same way and at the same time as the four above —
+  // deliberately never added/removed later, only ever shown or hidden via opacity.
   closeRingCircle = L.circle([CENTER.lat, CENTER.lon], {
     radius: CLOSE_RING_NM * 1852,
-    color:'#8fe3a6', weight:1, opacity:0.22, dashArray:'3,7', fill:false, interactive:false
-  });
+    color:'#8fe3a6', weight:1, opacity:0, dashArray:'3,7', fill:false, interactive:false
+  }).addTo(map);
   const closeLabelPt = destPoint(CENTER.lat, CENTER.lon, 0, CLOSE_RING_NM);
   closeRingLabel = L.marker([closeLabelPt.lat, closeLabelPt.lon], {
     icon: L.divIcon({className:'alt-label', html:`${CLOSE_RING_NM} NM`, iconSize:[40,14], iconAnchor:[20,7]}),
-    interactive:false
-  });
-  updateCloseRingVisibility(); // starts hidden/shown based on whatever zoom the map opens at
+    interactive:false, opacity:0
+  }).addTo(map);
+
   map.on('zoomend', updateCloseRingVisibility);
 }
 
