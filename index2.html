@@ -1492,14 +1492,14 @@ function initMap(){
   // Point-in-time location fix at page load, rather than always defaulting to the
   // fixed home coordinates — CENTER only serves as a fallback now, for when
   // geolocation fails or is denied.
-  map.setView([CENTER.lat, CENTER.lon], 10);
+  map.setView([CENTER.lat, CENTER.lon], 10.5);
   renderAirports();
   if(navigator.geolocation){
     navigator.geolocation.getCurrentPosition(pos=>{
       CENTER.lat = pos.coords.latitude;
       CENTER.lon = pos.coords.longitude;
       updateCenterVisuals();
-      map.setView([CENTER.lat, CENTER.lon], 10);
+      map.setView([CENTER.lat, CENTER.lon], 10.5);
       renderTable();
       renderMap();
       renderAirports();
