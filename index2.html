@@ -296,6 +296,11 @@
   .collection-header .section-heading{margin:0;padding-top:0;border-top:none;}
   .collection-header-actions{display:flex;gap:8px;}
   .collection-header-actions .geo-btn{padding:8px 10px;}
+  .mode-indicator{
+    font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;
+    white-space:nowrap;padding:4px 8px;border:1px solid var(--grid);
+  }
+  .mode-indicator.practice{color:var(--amber);border-color:var(--amber);}
   .scope-status{font-size:11px;color:var(--muted);margin-bottom:8px;}
   .scope-status b{color:var(--phosphor);}
   #scope{width:100%;aspect-ratio:1/1;background:var(--scope);}
@@ -652,19 +657,23 @@
 
   <div class="collection-header">
     <h2 class="section-heading" style="margin:0;">Scoreboard</h2>
-    <select id="dashDateFilter" title="Filter scoreboard by date range">
-      <option value="today">Today</option>
-      <option value="7">Last 7 days</option>
-      <option value="28">Last 28 days</option>
-      <option value="90">Last 90 days</option>
-      <option value="all" selected>All time</option>
-    </select>
+    <div class="collection-header-actions" style="align-items:center;gap:12px;">
+      <span id="dashModeLabel" class="mode-indicator"></span>
+      <select id="dashDateFilter" title="Filter scoreboard by date range">
+        <option value="today">Today</option>
+        <option value="7">Last 7 days</option>
+        <option value="28">Last 28 days</option>
+        <option value="90">Last 90 days</option>
+        <option value="all" selected>All time</option>
+      </select>
+    </div>
   </div>
   <div id="dash-view"></div>
 
   <div class="collection-header">
     <h2 class="section-heading" style="margin:0;">My Collection</h2>
-    <div class="collection-header-actions">
+    <div class="collection-header-actions" style="align-items:center;">
+      <span id="collectionModeLabel" class="mode-indicator"></span>
       <button id="exportBtn" class="geo-btn icon-btn" title="Export JSON" aria-label="Export JSON"><i class="ph">&#xEAF4;</i></button>
       <button id="importBtn" class="geo-btn icon-btn" title="Import JSON" aria-label="Import JSON"><i class="ph">&#xE256;</i></button>
       <input type="file" id="importFile" accept="application/json,.json" style="display:none;">
@@ -1178,14 +1187,17 @@ async function logGuess(entry){
 // Collection is now tap-driven: every plane you tap (and either guess or reveal)
 // gets a record here, with your best/most recent ID score attached. score is
 // 0-100, or null if this type code has no dictionary entry to grade against.
-async function collectAircraft(a, score){
+// isPractice reflects whether the most recent guess on this record was made with
+// photo hints on — a record can flip between practice/real across repeat sightings,
+// so this always reflects the latest, not a permanent tag from first catch.
+async function collectAircraft(a, score, isPractice){
   const key = 'bird:'+a.hex;
   const nowISO = new Date().toISOString();
   let rec = null;
   try{ const r = await storage.get(key); rec = r ? JSON.parse(r.value) : null; }catch(e){ rec = null; }
   if(!rec){
     rec = {hex:a.hex, reg:a.r||null, type:a.t||null, category:a.category||null, group:classify(a),
-           first_seen:nowISO, last_seen:nowISO, guesses:0, bestScore:null, lastScore:null, firstScore:null};
+           first_seen:nowISO, last_seen:nowISO, guesses:0, bestScore:null, lastScore:null, firstScore:null, practiceSighting:false};
     newThisSession.add(a.hex);
   }
   rec.last_seen = nowISO;
@@ -1198,6 +1210,7 @@ async function collectAircraft(a, score){
     rec.lastScore = score;
     rec.bestScore = (rec.bestScore===null || rec.bestScore===undefined) ? score : Math.max(rec.bestScore, score);
     if(rec.firstScore === null || rec.firstScore === undefined) rec.firstScore = score; // set once, from the first real guess only
+    rec.practiceSighting = !!isPractice;
   }
   try{ await storage.set(key, JSON.stringify(rec)); }catch(e){ console.error('storage set failed', e); }
 }
@@ -1228,11 +1241,14 @@ async function submitGuess(hex, chosenDisplay, chosenMake){
   const correctMake = info ? info[0] : null;
   // Scoring: exact model match = 100%, right manufacturer but wrong model = 50%, otherwise 0%.
   const rawScore = chosenDisplay === correct ? 100 : (chosenMake === correctMake ? 50 : 0);
-  // Photo hints make identification meaningfully easier, so a guess made with hints on
-  // is worth half — keeps your Scoreboard honest about how you're actually doing when
-  // you don't have a picture to lean on, versus when you do.
+  // Practice sightings (photo hints on) get equal credit — no suppression. Halving used
+  // to distort the overall score, especially since practice mode exists precisely for
+  // planes you CAN'T see (too far, indoors) — penalizing those guesses made the
+  // Scoreboard less useful, not more honest. Instead, practice sightings are tagged so
+  // they can be included or excluded from the Scoreboard via a toggle, and marked with
+  // an asterisk in the Collection — analyzed separately or together, your choice.
   const usedPhotoHint = photoHintsEnabled;
-  const score = usedPhotoHint ? Math.round(rawScore / 2) : rawScore;
+  const score = rawScore;
 
   const state = quizStates.get(hex) || {};
   state.chosen = chosenDisplay;
@@ -1242,7 +1258,7 @@ async function submitGuess(hex, chosenDisplay, chosenMake){
   quizStates.set(hex, state);
   revealedHexes.add(hex);
 
-  await collectAircraft(a, score);
+  await collectAircraft(a, score, usedPhotoHint);
   await logGuess({hex:a.hex, typeCode:a.t, correctName:correct, correctMake, chosenName:chosenDisplay, chosenMake, score, rawScore, usedPhotoHint, bucket: typeBucket(a.t), category: classify(a)});
 
   gameScore.total++;
@@ -1416,16 +1432,25 @@ function showDetail(hex){
       const headlineIcon = rawScore===100 ? '&#xE666;' : rawScore===50 ? '&#xE43A;' : '&#xE442;';
       const headline = `<i class="ph">${headlineIcon}</i> ${state.score}% — ${headlineText}`;
       const hintNote = state.usedPhotoHint
-        ? `<div class="photo-hint-note"><i class="ph">&#xE10E;</i> Photo hint was on — score halved (would've been ${rawScore}% without it)</div>`
+        ? `<div class="photo-hint-note"><i class="ph">&#xE10E;</i> Practice sighting — tagged separately, doesn't affect this score</div>`
         : '';
       quizEl.innerHTML = `<div class="quiz-result ${cls}">${headline}<br>You guessed <b>${state.chosen}</b> — it's actually a <b>${model}</b>.</div>${hintNote}
         <div class="photo-compare-loading" id="photoCompare">Loading photos…</div>`;
       renderPhotoCompare(hex, a, model, state);
     } else if(state && state.noData){
+      const viewFlightsLink = a.r
+        ? `<a class="photo-fallback-link" href="https://www.flightradar24.com/data/aircraft/${encodeURIComponent(a.r.toLowerCase())}" target="_blank" rel="noopener">View Flights</a>`
+        : '';
       quizEl.innerHTML = `<div class="quiz-result" style="color:var(--muted);border-color:var(--grid);">
         ${a.t ? `Type <b>${a.t}</b> isn't in the aircraft database yet` : 'No type code reported for this aircraft'} —
         logged as a catch, but there's nothing to quiz you on.
-      </div>`;
+      </div>
+      ${viewFlightsLink}
+      <div id="detailEditInline"></div>`;
+      renderTypeEditForm(hex, a.t, {
+        make: typeMake(a.t), model: typeModel(a.t), status: typeStatus(a.t),
+        group: resolveRecordGroup({type: a.t, category: a.category})
+      }, 'detailEditInline', ()=>showDetail(hex));
     } else {
       quizEl.innerHTML = '';
     }
@@ -1759,6 +1784,7 @@ function applyCollectionFilters(recs, includeRarity){
 let expandedTypeGroup = null; // groupKey of the currently expanded type row, or null if none
 
 async function renderLog(){
+  updateModeLabels();
   let keys = [];
   try{
     const r = await storage.list('bird:');
@@ -1778,13 +1804,25 @@ async function renderLog(){
     }catch(e){}
   }
 
-  populateMakeFilter(recs);
-  updateRarityCounts(applyCollectionFilters(recs, false)); // faceted by make/type, not by rarity itself
+  // The practice button is the mode switch for My Collection too — Practice mode on
+  // shows only practice sightings, off shows only real-world ones.
+  const modeRecs = recs.filter(r => !!r.practiceSighting === photoHintsEnabled);
+
+  if(!modeRecs.length){
+    const modeWord = photoHintsEnabled ? 'practice' : 'real-world';
+    document.getElementById('logTable').innerHTML = `<tr><td class="empty" colspan="5">No ${modeWord} sightings yet.</td></tr>`;
+    updateRarityCounts([]);
+    populateMakeFilter([]);
+    return;
+  }
+
+  populateMakeFilter(modeRecs);
+  updateRarityCounts(applyCollectionFilters(modeRecs, false)); // faceted by make/type, not by rarity itself
   document.querySelectorAll('.rarity-count-col[data-rarity]').forEach(el=>{
     el.classList.toggle('active', el.dataset.rarity === collectionRarityFilter);
   });
 
-  const filtered = applyCollectionFilters(recs, true);
+  const filtered = applyCollectionFilters(modeRecs, true);
 
   if(!filtered.length){
     document.getElementById('logTable').innerHTML = `<tr><td class="empty" colspan="5">Nothing matches the current filters.</td></tr>`;
@@ -1897,8 +1935,10 @@ let currentDetailHex = null; // which aircraft the Collection detail modal is cu
 // gets closed going forward. Saves type code changes directly to the record (a specific
 // tail number genuinely has one real type), then applies rarity/make/model/group as
 // type-wide overrides on whatever code ends up in effect.
-function renderTypeEditForm(hex, code, current){
-  const el = document.getElementById('colDetailEdit');
+function renderTypeEditForm(hex, code, current, containerId, refreshFn){
+  containerId = containerId || 'colDetailEdit';
+  const doRefresh = refreshFn || (()=>{ if(currentDetailHex) showCollectionDetail(currentDetailHex); });
+  const el = document.getElementById(containerId);
   if(!el) return;
   const statuses = ['Common','Rare','Epic','Legendary','Unclassified'];
   const groups = [['ga','GA'],['rotor','Rotor'],['charter','Charter'],['commercial','Commercial']];
@@ -1948,7 +1988,7 @@ function renderTypeEditForm(hex, code, current){
         group: document.getElementById('typeEditGroup').value,
       });
     }
-    if(currentDetailHex) showCollectionDetail(currentDetailHex); // re-render with the new values
+    doRefresh();
   });
   document.getElementById('typeEditReset').addEventListener('click', async ()=>{
     if(code){
@@ -1956,7 +1996,7 @@ function renderTypeEditForm(hex, code, current){
       try{ await storage.set('typeOverrides', JSON.stringify(typeOverrides)); }catch(e){}
     }
     renderMap(); renderTable(); renderLog(); renderDashboard();
-    if(currentDetailHex) showCollectionDetail(currentDetailHex);
+    doRefresh();
   });
 }
 
@@ -2017,6 +2057,7 @@ async function showCollectionDetail(hex){
     ['Last score', rec.lastScore!=null ? `${rec.lastScore}%` : '—'],
   );
   if(isOverridden) rows.push(['Classification', '<span style="color:var(--amber);">Personally corrected</span>']);
+  if(rec.practiceSighting) rows.push(['Sighting type', '<span style="color:var(--amber);">Practice (identified via photo hint)</span>']);
 
   document.getElementById('colDetailBody').innerHTML = rows.map(([k,v])=>`<dt>${k}</dt><dd>${v}</dd>`).join('');
   renderTypeEditForm(hex, rec.type, {make, model: modelName, status, group});
@@ -2133,6 +2174,17 @@ function dashPeriodDays(period){
   return parseInt(period, 10);
 }
 
+// Updates both mode-indicator labels (Scoreboard and Collection) to reflect the practice
+// button's current state — this is the single source of truth for which mode you're in.
+function updateModeLabels(){
+  const label = photoHintsEnabled ? 'Practice mode' : 'Real-world mode';
+  [document.getElementById('dashModeLabel'), document.getElementById('collectionModeLabel')].forEach(el=>{
+    if(!el) return;
+    el.textContent = label;
+    el.classList.toggle('practice', photoHintsEnabled);
+  });
+}
+
 // Common stat bundle computed for both the current period and, where applicable, the
 // prior period of equal length — shared so the two are always measured identically.
 function computeDashStats(entries){
@@ -2168,12 +2220,19 @@ function trendArrowHtml(curVal, priorVal, invert){
 }
 
 async function renderDashboard(){
+  updateModeLabels();
   const dashEl = document.getElementById('dash-view');
   let log = [];
   try{ const r = await storage.get('game:log'); log = r ? JSON.parse(r.value) : []; }catch(e){ log = []; }
 
+  // The practice button is the filter now, not a separate toggle — Practice mode on
+  // shows only practice sightings, off shows only real-world ones. A hard switch
+  // between two distinct modes, not a blend.
+  log = log.filter(e => !!e.usedPhotoHint === photoHintsEnabled);
+
   if(!log.length){
-    dashEl.innerHTML = `<div class="status"><div class="empty" style="padding:24px 0;">No guesses yet — head to Live Scope, tap a plane, and take a guess. Your stats build up here as you go.</div></div>`;
+    const modeWord = photoHintsEnabled ? 'practice' : 'real-world';
+    dashEl.innerHTML = `<div class="status"><div class="empty" style="padding:24px 0;">No ${modeWord} guesses yet — head to Live Scope, tap a plane, and take a guess. Your stats build up here as you go.</div></div>`;
     return;
   }
 
@@ -2638,15 +2697,18 @@ function proceedPastAimGate(hex){
   showDetail(hex);
 }
 
-// Photo hints: a deliberate practice mode, not a game-breaking spoiler — lets you see
-// a picture before guessing, useful indoors or when the plane's too far/obscured to
-// actually see, so you can still practice identification by photo rather than needing
-// eyes-on. Overrides the normal reveal-gate in showDetail() while active.
+// Photo hints / Practice mode: lets you see a picture before guessing, useful indoors
+// or when the plane's too far/obscured to actually see. This button is now also the
+// filter for Scoreboard and My Collection — Practice mode on shows only practice
+// sightings there, off shows only real-world ones, a hard switch between two distinct
+// modes rather than a blended view.
 let photoHintsEnabled = false;
 document.getElementById('photoHintsBtn').addEventListener('click', ()=>{
   photoHintsEnabled = !photoHintsEnabled;
   document.getElementById('photoHintsBtn').classList.toggle('on', photoHintsEnabled);
   if(selectedHex) showDetail(selectedHex); // refresh whatever's currently open right away
+  renderDashboard();
+  renderLog();
 });
 
 document.getElementById('hardModeBtn').addEventListener('click', async ()=>{
@@ -2754,8 +2816,73 @@ document.getElementById('geoBtn').addEventListener('click', ()=>{
   if(geoWatchId === null) startGeoTracking(); else stopGeoTracking();
 });
 
+// One-time reconciliation, safe to run on every load: earlier records may have a
+// permanently halved bestScore/lastScore/firstScore baked in from before practice
+// sightings got equal credit, with nothing on the record itself marking them as such —
+// only the separate guess log preserved the true rawScore and the practice flag. This
+// recomputes those three fields from the log's rawScore (the true identification
+// accuracy, even for guesses made back when suppression was active) and backfills
+// practiceSighting, so existing collected aircraft reflect real accuracy instead of
+// staying stuck at an old suppressed value. Idempotent — re-running it is harmless.
+// Caveat: the guess log caps at MAX_LOG_ENTRIES; if a hex's earliest guesses have
+// already aged out of the log, this can only reconcile against what's left.
+async function migratePracticeScores(){
+  let log = [];
+  try{ const r = await storage.get('game:log'); log = r ? JSON.parse(r.value) : []; }catch(e){ return; }
+  if(!log.length) return;
+
+  const byHex = new Map();
+  log.forEach(entry=>{
+    if(!entry.hex) return;
+    if(!byHex.has(entry.hex)) byHex.set(entry.hex, []);
+    byHex.get(entry.hex).push(entry);
+  });
+  byHex.forEach(entries => entries.sort((a,b)=> new Date(a.ts) - new Date(b.ts)));
+
+  let keys = [];
+  try{ const r = await storage.list('bird:'); keys = r ? r.keys : []; }catch(e){ return; }
+
+  let changedCount = 0;
+  for(const key of keys){
+    const hex = key.slice('bird:'.length);
+    const entries = byHex.get(hex);
+    if(!entries || !entries.length) continue; // nothing in the log to reconcile against
+
+    let rec;
+    try{ const r = await storage.get(key); rec = r ? JSON.parse(r.value) : null; }catch(e){ continue; }
+    if(!rec) continue;
+
+    // Older log entries (from before rawScore existed) never had suppression applied in
+    // the first place, so their plain score IS already the true accuracy.
+    const rawScores = entries
+      .map(e => (e.rawScore !== undefined && e.rawScore !== null) ? e.rawScore : e.score)
+      .filter(s => s !== null && s !== undefined);
+    if(!rawScores.length) continue;
+
+    const correctBest = Math.max(...rawScores);
+    const correctFirst = rawScores[0];
+    const correctLast = rawScores[rawScores.length - 1];
+    const correctPractice = !!entries[entries.length - 1].usedPhotoHint;
+
+    let changed = false;
+    if(rec.bestScore !== correctBest){ rec.bestScore = correctBest; changed = true; }
+    if(rec.firstScore !== correctFirst){ rec.firstScore = correctFirst; changed = true; }
+    if(rec.lastScore !== correctLast){ rec.lastScore = correctLast; changed = true; }
+    if(!!rec.practiceSighting !== correctPractice){ rec.practiceSighting = correctPractice; changed = true; }
+
+    if(changed){
+      try{ await storage.set(key, JSON.stringify(rec)); changedCount++; }catch(e){}
+    }
+  }
+  if(changedCount){
+    console.log(`Reconciled ${changedCount} record(s) to reflect true accuracy instead of suppressed practice scores.`);
+    renderTable(); renderLog(); renderDashboard();
+  }
+}
+
 loadGameScore();
 loadTypeOverrides();
+migratePracticeScores();
 renderDashboard();
 renderLog();
 loadLiveRarityData();
