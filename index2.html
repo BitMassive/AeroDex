@@ -660,11 +660,11 @@
     <div class="collection-header-actions" style="align-items:center;gap:12px;">
       <span id="dashModeLabel" class="mode-indicator"></span>
       <select id="dashDateFilter" title="Filter scoreboard by date range">
-        <option value="today">Today</option>
+        <option value="today" selected>Today</option>
         <option value="7">Last 7 days</option>
         <option value="28">Last 28 days</option>
         <option value="90">Last 90 days</option>
-        <option value="all" selected>All time</option>
+        <option value="all">All time</option>
       </select>
     </div>
   </div>
@@ -2166,7 +2166,7 @@ function scoreColor(acc){
   return acc>=80 ? 'var(--phosphor)' : acc>=50 ? 'var(--amber)' : 'var(--magenta)';
 }
 
-let dashPeriod = 'all';
+let dashPeriod = 'today';
 
 function dashPeriodDays(period){
   if(period === 'today') return 1;
@@ -2177,7 +2177,7 @@ function dashPeriodDays(period){
 // Updates both mode-indicator labels (Scoreboard and Collection) to reflect the practice
 // button's current state — this is the single source of truth for which mode you're in.
 function updateModeLabels(){
-  const label = photoHintsEnabled ? 'Practice mode' : 'Real-world mode';
+  const label = photoHintsEnabled ? 'Practice' : 'Real-world';
   [document.getElementById('dashModeLabel'), document.getElementById('collectionModeLabel')].forEach(el=>{
     if(!el) return;
     el.textContent = label;
@@ -2238,10 +2238,23 @@ async function renderDashboard(){
 
   // Date-range filter applies across the whole Scoreboard — every section below is
   // computed from currentLog, not the full history, whenever a specific range is picked.
+  // "Today" is a special case: calendar day (midnight to midnight, local time), not a
+  // rolling 24-hour window — so it resets at midnight rather than always meaning "the
+  // last 24 hours" relative to whenever you happen to open the app. Its prior-period
+  // comparison is yesterday's calendar day, for the same reason.
   const periodDays = dashPeriodDays(dashPeriod);
   const now = Date.now();
   let currentLog, priorLog;
-  if(periodDays === null){
+  if(dashPeriod === 'today'){
+    const nowDate = new Date();
+    const todayStart = new Date(nowDate.getFullYear(), nowDate.getMonth(), nowDate.getDate()).getTime();
+    const yesterdayStart = todayStart - 86400000;
+    currentLog = log.filter(e => new Date(e.ts).getTime() >= todayStart);
+    priorLog = log.filter(e => {
+      const t = new Date(e.ts).getTime();
+      return t >= yesterdayStart && t < todayStart;
+    });
+  } else if(periodDays === null){
     currentLog = log;
     priorLog = null; // "All time" has no fixed-length window to compare against
   } else {
@@ -2363,12 +2376,24 @@ async function exportCollection(){
   for(const k of keys){
     try{ const rr = await storage.get(k); if(rr) birds.push(JSON.parse(rr.value)); }catch(e){}
   }
+
+  let gameLog = [];
+  try{ const rr = await storage.get('game:log'); gameLog = rr ? JSON.parse(rr.value) : []; }catch(e){}
+
+  let gameScoreData = null;
+  try{ const rr = await storage.get('game:score'); gameScoreData = rr ? JSON.parse(rr.value) : null; }catch(e){}
+
+  // Every locally-stored dataset this app uses, not just the collection — this is meant
+  // to be a complete debugging snapshot, so nothing relevant is left out when handing an
+  // export back for troubleshooting.
   const payload = {
     exported_at: new Date().toISOString(),
     source:'AeroDex',
     count: birds.length,
     birds,
     typeOverrides: Object.keys(typeOverrides).length ? typeOverrides : undefined,
+    gameLog: gameLog.length ? gameLog : undefined,
+    gameScore: gameScoreData || undefined,
   };
   const blob = new Blob([JSON.stringify(payload, null, 2)], {type:'application/json'});
   const url = URL.createObjectURL(blob);
@@ -2425,7 +2450,26 @@ async function importCollection(file){
     }
   }
 
-  statusEl.textContent = `Imported ${count} record${count===1?'':'s'}${overrideCount?`, ${overrideCount} classification correction${overrideCount===1?'':'s'}`:''}.`;
+  // Merge guess log entries additively -- dedupe on hex+timestamp+score so re-importing
+  // the same backup twice doesn't double up history, then re-sort and re-cap at
+  // MAX_LOG_ENTRIES same as normal logging. gameScore (the running total shown in the
+  // header) is deliberately left untouched: it's a live aggregate, not a backup-restorable
+  // dataset, and blindly overwriting it risks regressing further-along local progress.
+  let logImportCount = 0;
+  if(Array.isArray(payload.gameLog) && payload.gameLog.length){
+    let existingLog = [];
+    try{ const r = await storage.get('game:log'); existingLog = r ? JSON.parse(r.value) : []; }catch(e){}
+    const existingKeys = new Set(existingLog.map(e => `${e.hex}|${e.ts}|${e.score}`));
+    const toAdd = payload.gameLog.filter(e => !existingKeys.has(`${e.hex}|${e.ts}|${e.score}`));
+    if(toAdd.length){
+      let merged = existingLog.concat(toAdd);
+      merged.sort((a,b)=> new Date(a.ts) - new Date(b.ts));
+      if(merged.length > MAX_LOG_ENTRIES) merged = merged.slice(merged.length - MAX_LOG_ENTRIES);
+      try{ await storage.set('game:log', JSON.stringify(merged)); logImportCount = toAdd.length; }catch(e){}
+    }
+  }
+
+  statusEl.textContent = `Imported ${count} record${count===1?'':'s'}${overrideCount?`, ${overrideCount} classification correction${overrideCount===1?'':'s'}`:''}${logImportCount?`, ${logImportCount} guess log entr${logImportCount===1?'y':'ies'}`:''}.`;
   renderLog();
   renderMap();
   renderTable();
